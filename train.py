@@ -1,8 +1,11 @@
 import torch
 from torch.data.utils import DataLoader
 from dataset import pll_datst, coll, mono_datst
-from preprocessing import df_en, df_de
+from preprocessing import load_data
 from model import xlmb2b
+
+data_obj = load_data()
+df_prllel, df_eng, df_de = data_obj.final_data()
 
 pll_train_ds = pll_datst(df_prllel)
 mono_train_ds_eng = mono_datst(df_en)
