@@ -5,7 +5,7 @@ class simpler_sampler() :
         self.b_sz = b_sz
         self.d_model = d_model
         self.dtalodr_for_dic = get_dtalodr_for_dic(dic, lang)
-	self.dic = dic                                                          #dictionary  {'i' : 'token_embdng_of_ith_token'} , 0=<i<=len(vocab)-1 
+        self.dic = dic                                                          #dictionary  {'i' : 'token_embdng_of_ith_token'} , 0=<i<=len(vocab)-1 
         self.xlm_embdngs = None
         self.calc_xlm_embdngs()
 
@@ -54,40 +54,33 @@ class simpler_sampler() :
 
 class beam_search(simpler_sampler):
     """
-        Takes the probability distribution across vocab and the atention mask as the input, 
+        Takes the probability distribution across vocab and the atention mask as the input,
         shapes: (batch_size, seq_len, vocab_size) and (batch_size, seq_len) resp.
-        Applies beam search for every sequence in the batch, giving word-level output 
+        Applies beam search for every sequence in the batch, giving word-level output
         output shape: (batch_size, seq len, 1)
     """
-    def __init__(self, dic, b_sz = 256, d_model = 1024, lamng = 'en'):
+    def __init__(self, dic, b_sz = 256, d_model = 1024, lang = 'en', beam_size=3):
         self.simpler_sampler = simpler_sampler(dic, b_sz, d_model, lang)
-        self.b_sz = b_sz
+        self.beam_size = beam_size
 
-    def simple_beam(self, batch, pos = 0, beam = 3):
+    def simple_beam(self, batch, pos = 0):
         """
-            Takes as input the batch and the position to look at 
+            Takes as input the batch and the position to look at
             batch: (batch_size, seq_len, vocabulary size)
             Outputs the indexes of the beam words and the corr probs
         """
-        probs_l = []
-        indices_l = []
-        
-        for logits in batch:
-            probs, indices = torch.topk(logits[pos], beam)
-            probs_l.append(probs)
-            indices_l.append(indices)
-        return torch.stack(probs), torch.stack(indices)        # indices: the position of chosen words in the vocab
+        return torch.topk(batch[:,pos,:], self.beam_size)        # returns (values,indices) indices: the position of chosen words in the vocab
 
 
-    def apply_beam_search(self, attn_mask, logits, beam = 3):
+    def apply_beam_search(self, attn_mask, logits):
         """
             logits: (..., vocabulary size)
         """
         vec = []
         for i in range(logits.shape[0]):
             if(attn_mask[i] == 1):
-                values, indices = torch.topk(logits[i], beam)
-                for j in range(beam):
+                values, indices = torch.topk(logits[i], self.beam_size)
+                for j in range(self.beam_size):
                     emb = self.simpler_sampler.dic[indices[j]]
                     vec.append(emb)
                     probs = self.simpler_sampler.get_probs(vec, t, False, False)
@@ -121,6 +114,12 @@ class beam_search(simpler_sampler):
             out.append(apply_beam_search(logit))
 
         return torch.stack(out)
+
+class nuc_sampler(simpler_sampler) :
+
+    def __init__(self, dic, b_sz = 256, d_model = 1024, lang = 'en', beam_size=3):
+        self.simpler_sampler = simpler_sampler(dic, b_sz, d_model, lang)
+        self.beam_size = beam_size
 
     @staticmethod
     def apply_top_k_or_top_p(logits, top_k=0, top_p=0):
