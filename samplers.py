@@ -71,6 +71,7 @@ class beam_search(simpler_sampler):
         """
         probs_l = []
         indices_l = []
+        
         for logits in batch:
             probs, indices = torch.topk(logits[pos], beam)
             probs_l.append(probs)
@@ -94,7 +95,7 @@ class beam_search(simpler_sampler):
                 to_consider.append(logits[i])
 
         logits_ = torch.tensor(to_consider)
-        
+
 
     def apply_beam_search_recur(self, attn_mask, logits, beam = 3):
         """
