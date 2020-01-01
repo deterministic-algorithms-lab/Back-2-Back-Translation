@@ -80,5 +80,5 @@ class xlmb2b(torch.nn.Module):
                 tgt_key_pad_mask[ind,it_no+1] = torch.ones((ind.shape[0],1))
                 if not_done_samples.shape[0]==0 or it_no==self.max_tr_seq_len-1:
                     return torch.stack(final_out), tr_embd, lengs
-                tr_embd[:,it_no,:] = self.embed_tokens(output_at_it_no)		      #Adding next words embeddings to context for decoder
+                tr_embd[ind,it_no,:] = self.xlm.embeddings(output_at_it_no)		      #Adding next words embeddings to context for decoder
                 it_no+=1
