@@ -51,10 +51,75 @@ class simpler_sampler() :
         _, next_token_index = probs.max(0)
         return self.xlm_embdngs[next_token_index]
 
-class nucleus_sampler(simpler_sampler) :
 
-    def __init__(self, dic, b_sz = 256, d_model=1024, lang='en' ) :
+class beam_search(simpler_sampler):
+    """
+        Takes the probability distribution across vocab and the atention mask as the input, 
+        shapes: (batch_size, seq_len, vocab_size) and (batch_size, seq_len) resp.
+        Applies beam search for every sequence in the batch, giving word-level output 
+        output shape: (batch_size, seq len, 1)
+    """
+    def __init__(self, dic, b_sz = 256, d_model = 1024, lamng = 'en'):
         self.simpler_sampler = simpler_sampler(dic, b_sz, d_model, lang)
+        self.b_sz = b_sz
+
+    def simple_beam(self, batch, pos = 0, beam = 3):
+        """
+            Takes as input the batch and the position to look at 
+            batch: (batch_size, seq_len, vocabulary size)
+            Outputs the indexes of the beam words and the corr probs
+        """
+        probs_l = []
+        indices_l = []
+        for logits in batch:
+            probs, indices = torch.topk(logits[pos], beam)
+            probs_l.append(probs)
+            indices_l.append(indices)
+        return torch.stack(probs), torch.stack(indices)        # indices: the position of chosen words in the vocab
+
+
+    def apply_beam_search(self, attn_mask, logits, beam = 3):
+        """
+            logits: (..., vocabulary size)
+        """
+        vec = []
+        for i in range(logits.shape[0]):
+            if(attn_mask[i] == 1):
+                values, indices = torch.topk(logits[i], beam)
+                for j in range(beam):
+                    emb = self.simpler_sampler.dic[indices[j]]
+                    vec.append(emb)
+                    probs = self.simpler_sampler.get_probs(vec, t, False, False)
+
+                to_consider.append(logits[i])
+
+        logits_ = torch.tensor(to_consider)
+        
+
+    def apply_beam_search_recur(self, attn_mask, logits, beam = 3):
+        """
+            logits: (..., vocabulary size)
+        """
+        prob_sums = {}
+
+        if(logits[0] == END_TOKEN):
+            return 1
+
+        if(attn_mask[0] == 1):
+            values, indices = torch.topk(logits[0], beam)
+            for j in range(beam):
+                vec = self.simpler_sampler.dic[indices[j]]
+                logits[1] = self.simpler_sampler.get_probs(vec.reshape(1,-1), t, False, False)
+                prob_sums[j] += apply_beam_search_recur(attn_mask, logits[1:])
+                return values[j]
+
+
+    def searcher(self, batch):
+        out = []
+        for logit in batch:
+            out.append(apply_beam_search(logit))
+
+        return torch.stack(out)
 
     @staticmethod
     def apply_top_k_or_top_p(logits, top_k=0, top_p=0):
