@@ -3,21 +3,18 @@ import torch
 from sampler import simpler_sampler
 
 class xlmb2b(torch.nn.Module):
-    def __init__(self, dic, d_model=1024, trfrmr_nlayers=4, batch_size=batch_size, pll_dat=True, N=6) :
+    def __init__(self, dic, d_model=1024, trfrmr_nlayers=4, batch_size=batch_size, pll_dat=True) :
         super().__init__()
         self.xlm = XLMModel.from_pretrained('xlm-mlm-ende-1024')
         self.d_model = d_model
         decoder_layer = torch.nn.TransformerDecoderLayer(self.d_model, n_head=8)
         self.trnsfrmr_dcodr = torch.nn.TransformerDecoder(decoder_layer, num_layers=trfrmr_nlayers)
-        self.final_layer = nn.Linear(self.d_model*N,vocab_size)
         self.pll_data = pll_dat
         self.batch_size = batch_size
         self.mx_tr_seq_len =
         self.end_tok = #index of end_token in simpler_sampler's dic
         self.simpler_sampler = simpler_sampler(dic, b_sz = 256, d_model=1024, lang='en')
-        self.n = N
-        self.inp_lengs = None
-        self.out_lengs = None
+
 
     def get_tgt_mask(self, tr_len) :
             x = np.zeros((tr_len,tr_len))
@@ -25,21 +22,11 @@ class xlmb2b(torch.nn.Module):
             x[upp_indices] = -np.inf
             return torch.tensor(x)
 
-    def apply_last_layer(self, trfrmr_out, att_masks) :
-        '''Combines self.n outputs of same tr_seq_len in order to be processed by final layer.Does this for each element in batch'''
-        lis = []
-        for i in range(b_sz) :
-            z = trfrmr_out[(att_masks[i*self.n : (i+1)*self.n]==1)].reshape(self.n,-1,self.d_model)].transpose(1,2).
-            z = z.reshape(-1, z.shape[2]).t()
-            lis.append(z)
-        return final_layer(torch.stack(lis))
-
     def forward(self, dat, already_embed = False) :                             #dat is a dictionary with keys==keyword args of xlm
 
         if self.pll_data :
-
-            self.inp_lengs, self.out_lengs = dat['X'].pop('lengths'), dat['Y'].pop('lengths')
-            inp, out = dat['X'], dat['Y']
+            inp = dat['X']
+            out = dat['Y']
 
             if not already_embed :
                 sr_embd = self.xlm(**inp)[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
@@ -48,14 +35,13 @@ class xlmb2b(torch.nn.Module):
 
             tr_embd = self.xlm(**out)[0]
 
-            tr_len = self.out_lengs.max()
+            tr_len = out['lengths'].max()
             tgt_mask = self.get_tgt_mask(tr_len)
             trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(1,2), memory=sr_embd.transpose(1,2), tgt_mask=tgt_mask,
                                              tgt_key_padding_mask=out['attention_mask'],
                                              memory_key_padding_mask=inp['attention_mask'])
             trfrmr_out = trfrmr_out.transpse(1,2)
-            probs = self.apply_last_layer(trfrmr_out,out['attention_mask'])
-            return probs, tr_embd
+            return trfrmr_out, tr_embd
 
         else :
 
@@ -75,13 +61,12 @@ class xlmb2b(torch.nn.Module):
                                              memory_key_padding_mask=mem_key_pad_mask)
                 trfrmr_out = trfrmr_out.transpse(1,2)
                 output_it_no = []                                               #list of outputs @ it_no corres. to various samples in batch
-
                 for i in range(len(trfrmr_out.shape[0])) :                      #Loop over all samples to compute next words
                     if i not in done_samples :
                         output_it_no.append(self.simpler_sampler.get_max_prob_vec(trfrmr_out[i][it_no], self, calc_embdngs=True))
                     else :
                         output_it_no.append(torch.zeros((self.d_model)))
-		        z = torch.stack(output_it_no)
+		z = torch.stack(output_it_no)
                 final_out.append(z)
 
                 for i in range(len(output_it_no)) :                             #Loop over all samples to change their masks
