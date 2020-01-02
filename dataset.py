@@ -1,4 +1,4 @@
-from torch.util.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 
 class pll_datst(Dataset) :
     def __init__(self, df, sr_lang = 'en', tr_lang = 'de') :

@@ -5,7 +5,7 @@ from transformers import XLMTokenizer, XLMWithLMHeadModel
 tokenizer = XLMTokenizer.from_pretrained("xlm-mlm-ende-1024")
 
 class load_data():
-	def __init__(self, paths = ['./data/train.en','./data/train.de'], pll_size = 10**5):
+	def __init__(self, paths = ['../../data/train.en','../../data/train.de'], pll_size = 10**5):
 		self.src_lang_path = paths[0]
 		self.trgt_lang_path = paths[1]
 		self.pll_size = pll_size
@@ -23,10 +23,11 @@ class load_data():
 		with open(self.trgt_lang_path, 'rt') as f:
 		  while(i!=2*self.pll_size):
 		    input_ids = torch.tensor(tokenizer.encode(f.readline()))
-		    self.de_tokens.append(input_ids)
+		    self.trgt_tokens.append(input_ids)
 		    i = i + 1
 
 	def final_data(self):
+		self.load()
 		zipped_list = list(zip(self.src_tokens, self.trgt_tokens))
 		df_prllel = pd.DataFrame(zipped_list, columns = ['en', 'de'], dtype=object)
 		df_eng = pd.DataFrame(self.src_tokens)

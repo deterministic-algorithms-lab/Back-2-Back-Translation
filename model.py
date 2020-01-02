@@ -48,11 +48,11 @@ class xlmb2b(torch.nn.Module):
             out = dat['Y']
 
             if not already_embed :
-                sr_embd = self.xlm(**inp)[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
+                sr_embd = self.xlm(**inp)[0]
+                tr_embd = self.xlm(**out)[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
             else :
                 sr_embd = inp['content']
-
-            tr_embd = self.xlm(**out)[0]
+                tr_embd = inp['content']
 
             tr_len = out['lengths'].max()
             tgt_mask = self.get_tgt_mask(tr_len)
@@ -61,7 +61,8 @@ class xlmb2b(torch.nn.Module):
                                              memory_key_padding_mask=inp['attention_mask'])
             trfrmr_out = trfrmr_out.transpse(1,2)
             probs = self.apply_final_layer(trfrmr_out, out['attention_mask'])
-            return probs, tr_embd, trfrmr_out
+
+            return probs, sr_embd, tr_embd, trfrmr_out
 
         else :
 
