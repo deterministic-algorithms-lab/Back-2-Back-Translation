@@ -5,6 +5,8 @@ from dataset import pll_datst, coll, mono_datst
 from preprocessing import load_data
 # from model import xlmb2b
 
+from nltk.translate.bleu_score import sentence_bleu
+
 data_obj = load_data()
 df_prllel, df_eng, df_de = data_obj.final_data()
 
@@ -22,6 +24,25 @@ optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
 optimizer_de = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
 mseloss = nn.MSELoss()
 cross_entropy_loss = nn.CrossEntropyLoss()
+
+def calculate_bleu(ref, cand, dict_, weights = (0.25, 0.25, 0.25, 0.25)):
+  """
+     ref: (batch_size, seq_len, 1)
+     cand: (batch_size, seq_len, 1)
+  """
+  references = []
+  candidates = []
+  
+  for i in range(ref.shape[0]):
+    refs = []
+    cands = []
+    for j in range(ref[i].shape[0]):
+      refs.append(dict_[ref[i][j]])
+      cands.append(dict_[cand[i][j]])
+    references.append([refs])
+    candidates.append(cands)
+
+  return corpus_bleu(references, candidates, weights)
 
 def convert_to_probs(batch_y) :
   '''returns indices which should be 1'''
