@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from torch.data.utils import DataLoader
 from dataset import pll_datst, coll, mono_datst
 from preprocessing import load_data
@@ -19,7 +20,11 @@ mono_train_loader_en = DataLoader(mono_train_ds_en, batch_size=b_sz, collate_fn 
 mono_train_loader_de = DataLoader(mono_train_ds_de, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False))
 optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
 optimizer_de = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
-criterion = torch.nn.MSELoss()
+mseloss = nn.MSELoss()
+cross_entropy_loss = nn.CrossEntropyLoss()
+
+def convert_to_probs(batch) :
+    '''returns indices which should be 1'''
 
 num_epochs = 20
 thresh = 0.5
@@ -27,8 +32,8 @@ losses = [[1000, 1000]]
 for epoch in range(num_epochs) :
   if(losses[-1][0]>thresh or losses[-1][1]>thresh) :
     for i, batch in enumerate(pll_train_loader) :
-      yhat_ed = model_ed(batch)
-      yhat_de = modle_de(yhat_ed)
+      probs, tr_embd, trfrmr_out = model_ed(batch)
+      loss_pll = cross_entropy_loss(probs, convert_to_probs(batch))
       loss_pll = criterion(yhat_ed, batch['Y']['content'])
       loss_b2b = criterion(yhat_de, batch['X']['content'])
       loss1 = loss_pll + loss_b2b

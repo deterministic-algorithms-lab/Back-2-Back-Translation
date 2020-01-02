@@ -30,8 +30,8 @@ class xlmb2b(torch.nn.Module):
 
     def final_layer(self, trfrmr_out, mask) :
         mask = self.convert_mask_to_inf(mask)
-        trfrmr_out = trfrmr_out+mask
-        return self.softmax(self.final_linear(trfrmr_out).reshape(-1, self.vocab_size)).reshape(self.batch_size,-1,self.vocab_size)
+        x = trfrmr_out+mask
+        return self.softmax(self.final_linear(x).reshape(-1, self.vocab_size)).reshape(trfrmr_out.shape[0],-1,self.vocab_size)
 
     def apply_final_layer(self, trfrmr_out, mask, it_no=None, samples_to_do) :
         if it_no is not None :
