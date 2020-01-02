@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
-from torch.data.utils import DataLoader
+from torch.utils.data import DataLoader
 from dataset import pll_datst, coll, mono_datst
 from preprocessing import load_data
-from model import xlmb2b
+# from model import xlmb2b
 
 data_obj = load_data()
 df_prllel, df_eng, df_de = data_obj.final_data()
@@ -24,7 +24,7 @@ mseloss = nn.MSELoss()
 cross_entropy_loss = nn.CrossEntropyLoss()
 
 def convert_to_probs(batch_y) :
-    '''returns indices which should be 1'''
+  '''returns indices which should be 1'''
   out = torch.zeros(batch_y.shape[0], batch_y.shape[1], vocab_size)
   for i in range(batch_y.shape[0]):
     for j in range(batch_y[i].shape[0]):
