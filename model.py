@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from preprocessing import tokenizer
 
 class xlmb2b(torch.nn.Module):
     def __init__(self, dic, d_model=1024, trfrmr_nlayers=4, batch_size=batch_size, pll_dat=True) :
@@ -10,12 +11,13 @@ class xlmb2b(torch.nn.Module):
         self.trnsfrmr_dcodr = torch.nn.TransformerDecoder(decoder_layer, num_layers=trfrmr_nlayers)
         self.pll_data = pll_dat
         self.batch_size = batch_size
-        self.mx_tr_seq_len =
-        self.end_tok = #Token id of end token
+        self.mx_tr_seq_len = 120
+        self.end_tok = 1 #Token id of end token
         self.simpler_sampler = simpler_sampler(dic, b_sz = 256, d_model=1024, lang='en')
         self.final_layer = nn.Linear(self.d_model, self.vocab_size)
         self.softmax = nn.Softmax(dim=0)
-        self.dic_tensor = #tensor with i_th token's id at i_th position
+        self.dic_tensor = torch.tensor([v for k,v in tokenizer.encoder.items()]) #tensor with i_th token's id at i_th position
+        self.vocab_size = self.dic_tensor.shape[0]
 
     def get_tgt_mask(self, tr_len) :
         x = np.zeros((tr_len,tr_len))
