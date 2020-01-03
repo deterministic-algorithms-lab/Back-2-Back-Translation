@@ -49,11 +49,10 @@ def calculate_bleu(ref, cand, weights = (0.25, 0.25, 0.25, 0.25)):
 
 def reshape_n_edit(probs) :
   '''returns probs while removing rows with all 0 probs
-     the rows with all 0 probs are due to padding of all
+     the rows with all nan probs are due to padding of all
      sequences to same length'''
-  x = torch.zeros((vocab_size))
   y = probs.reshape(-1,d_model)
-  return y[y!=x]
+  return y[y==y]
 
 def swap(batch,sr_embd,tr_embd, pll = True) :
   if pll:
