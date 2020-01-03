@@ -14,6 +14,8 @@ df_prllel, df_en, df_de = data_obj.final_data()
 pll_train_ds = pll_datst(df_prllel)
 mono_train_ds_eng = mono_datst(df_en)
 mono_train_ds_de = mono_datst(df_de, lang='de')
+vocab_size = tokenizer.vocab_size()
+
 b_sz = 32
 batch_size = 32
 d_model = 1024
@@ -31,7 +33,7 @@ cross_entropy_loss = nn.CrossEntropyLoss()
 def calculate_bleu(ref, cand, weights = (0.25, 0.25, 0.25, 0.25)):
   """
      ref: (batch_size, seq_len, 1)
-     cand: (batch_size, seq_len, 1)
+     cand: (batch_size, seq_len, vocab_size)
   """
   references = []
   candidates = []
@@ -41,17 +43,18 @@ def calculate_bleu(ref, cand, weights = (0.25, 0.25, 0.25, 0.25)):
     cands = []
     for j in range(ref[i].shape[0]):
       refs.append(dict_[ref[i][j]])
-      cands.append(dict_[cand[i][j]])
+      cands.append(dict_[torch.max(cand[i][j], 0)[1]]))
     references.append([refs])
     candidates.append(cands)
 
   return corpus_bleu(references, candidates, weights)
+  
 
 def reshape_n_edit(probs) :
   '''returns probs while removing rows with all 0 probs
      the rows with all nan probs are due to padding of all
      sequences to same length'''
-  y = probs.reshape(-1,d_model)
+  y = probs.reshape(-1,vocab_size)
   return y[y==y]
 
 def swap(batch,sr_embd,tr_embd, pll = True) :
@@ -62,6 +65,7 @@ def swap(batch,sr_embd,tr_embd, pll = True) :
     batch['Y'] = z
     batch['X']['content'] = tr_embd
     batch['Y']['content'] = sr_embd
+
     return batch, z['content'], z1['content'], z, z1
 
   else:
@@ -70,9 +74,10 @@ def swap(batch,sr_embd,tr_embd, pll = True) :
 
     return batch, z['content'], z
 
-num_epochs = 20
+num_epochs = 1000
 thresh = 0.5
 losses = [[1000, 1000]]
+
 for epoch in tqdm(range(num_epochs)) :
 
   model_ed.pll_dat = True
@@ -81,7 +86,7 @@ for epoch in tqdm(range(num_epochs)) :
   for i, batch in enumerate(pll_train_loader) :
 
     probs, sr_embd, tr_embd, trfrmr_out = model_ed(batch)
-    loss_pll = cross_entropy_loss(probs, convert_to_probs(batch['Y']['content']))
+    loss_pll = cross_entropy_loss(reshape_n_edit(probs), batch['Y']['content'].reshape(-1,1))
     batch, a, b, c, d = swap(batch, sr_embd, tr_embd)
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_de(batch, True)
     loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), a.reshape(-1,1)) #since token_id is same as position in vocabulary
@@ -93,16 +98,17 @@ for epoch in tqdm(range(num_epochs)) :
     optimizer_ed.step()
 
     if(epochs%20 == 0):
-      print("Forward Model: ", calculate_bleu(b, model_ed(c), dict_vocab))
+      print("1st, Forward Model: ", calculate_bleu(b, probs))
+      print("1st, Backward Model: ", calculate_bleu(b, probs_))
 
     batch['X']['content'] = b
     batch['Y']['content'] = a
 
     probs, sr_embd, tr_embd, trfrmr_out = model_de(batch)
-    loss_pll = cross_entropy_loss(probs, convert_to_probs(batch['Y']['content']))
+    loss_pll = cross_entropy_loss(reshape_n_edit(probs), batch['Y']['content'].reshape(-1,1))
     batch, a, b, c, d = swap(batch, sr_embd, tr_embd)
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_ed(batch, True)
-    loss_b2b = cross_entropy_loss(probs_, convert_to_probs(a))
+    loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), a.reshape(-1,1))
     loss1 = loss_pll + loss_b2b
     optimizer_ed.zero_grad()
     optimizer_de.zero_grad()
@@ -110,8 +116,10 @@ for epoch in tqdm(range(num_epochs)) :
     optimizer_de.step()
     optimizer_ed.step()
 
+
     if(epochs%20 == 0):
-      print("Backward Model: ", calculate_bleu(b, model_de(c), dict_vocab))
+      print("2nd, Forward Model: ", calculate_bleu(b, probs))
+      print("2nd, Backward Model: ", calculate_bleu(b, probs_))
     
     losses.appened([loss1,loss2])
 
