@@ -1,9 +1,13 @@
 import numpy as np
 import torch
 from preprocessing import tokenizer
+from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
+
+batch_size = 32
+dic = tokenizer.decoder
 
 class xlmb2b(torch.nn.Module):
-    def __init__(self, dic, d_model=1024, trfrmr_nlayers=4, batch_size=batch_size, pll_dat=True) :
+    def __init__(self, dic = dic, d_model=1024, trfrmr_nlayers=4, batch_size=batch_size, pll_dat=True) :
         super().__init__()
         self.xlm = XLMModel.from_pretrained('xlm-mlm-ende-1024')
         self.d_model = d_model

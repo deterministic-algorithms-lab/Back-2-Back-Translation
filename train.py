@@ -14,7 +14,7 @@ df_prllel, df_en, df_de = data_obj.final_data()
 pll_train_ds = pll_datst(df_prllel)
 mono_train_ds_eng = mono_datst(df_en)
 mono_train_ds_de = mono_datst(df_de, lang='de')
-vocab_size = tokenizer.vocab_size()
+vocab_size = tokenizer.vocab_size
 
 b_sz = 32
 batch_size = 32
@@ -33,7 +33,7 @@ cross_entropy_loss = nn.CrossEntropyLoss()
 def calculate_bleu(ref, cand, weights = (0.25, 0.25, 0.25, 0.25)):
   """
      ref: (batch_size, seq_len, 1)
-     cand: (batch_size, seq_len, vocab_size)
+     cand: (batch_size, seq_len, 1)
   """
   references = []
   candidates = []

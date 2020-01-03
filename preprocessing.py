@@ -1,6 +1,6 @@
 import torch
 import pandas as pd
-from transformers import XLMTokenizer, XLMWithLMHeadModel
+from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
 
 tokenizer = XLMTokenizer.from_pretrained("xlm-mlm-ende-1024")
 
