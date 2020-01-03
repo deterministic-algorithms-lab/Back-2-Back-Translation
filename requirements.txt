@@ -4,3 +4,4 @@ pytorch
 pytorch-transformers
 transformers
 scikit-learn
+nltk

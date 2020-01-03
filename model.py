@@ -35,7 +35,7 @@ class xlmb2b(torch.nn.Module):
         x = trfrmr_out+mask
         return self.softmax(self.final_linear(x).reshape(-1, self.vocab_size)).reshape(trfrmr_out.shape[0],-1,self.vocab_size)
 
-    def apply_final_layer(self, trfrmr_out, mask, it_no=None, samples_to_do) :
+    def apply_final_layer(self, trfrmr_out, mask, samples_to_do, it_no=None) :
         if it_no is not None :
             trfrmr_out, mask = trfrmr_out[samples_to_do], mask[samples_to_do]
             mask[:,it_no] = 1
@@ -96,6 +96,6 @@ class xlmb2b(torch.nn.Module):
                     not_done_samples = not_done_samples[ind]
                 tgt_key_pad_mask[ind,it_no+1] = torch.ones((ind.shape[0],1))
                 if not_done_samples.shape[0]==0 or it_no==self.max_tr_seq_len-1:
-                    return torch.stack(final_out), tr_embd, lengs
+                    return torch.stack(final_out), sr_embed , tr_embd, lengs
                 tr_embd[ind,it_no,:] = self.xlm.embeddings(output_at_it_no)		      #Adding next words embeddings to context for decoder
                 it_no+=1
