@@ -97,12 +97,11 @@ for epoch in tqdm(range(num_epochs)) :
     optimizer_de.step()
     optimizer_ed.step()
 
-    model_de.eval()
-    model_ed.eval()
-
     if(epochs%20 == 0):
-      print("1st, Forward Model: ", model_ed(c))
-      print("1st, Backward Model: ", model_de(d))
+        model_de.eval()
+        model_ed.eval()
+        print("1st, Forward Model: ", model_ed(c))
+        print("1st, Backward Model: ", model_de(d))
 
     batch['X']['content'] = b
     batch['Y']['content'] = a
@@ -119,10 +118,10 @@ for epoch in tqdm(range(num_epochs)) :
     optimizer_de.step()
     optimizer_ed.step()
 
-    model_de.eval()
-    model_ed.eval()
-
+    
     if(epochs%20 == 0):
+      model_de.eval()
+      model_ed.eval()
       print("2nd, Forward Model: ", model_ed(c))
       print("2nd, Backward Model: ", model_de(d))
     

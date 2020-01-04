@@ -44,7 +44,12 @@ class xlmb2b(torch.nn.Module):
             trfrmr_out, mask = trfrmr_out[samples_to_do], mask[samples_to_do]
             mask[:,it_no] = 1
         return self.final_layer(trfrmr_out, mask)
-
+    
+    def embed_for_decoder(output_at_it_no, it_no, lang_long_tensor) :
+        y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
+        z = y + self.xlm.position_embeddings(it_no).expand_as(y)
+        return z+self.xlm.lang_embeddings(lang_id)
+    
     def forward(self, dat, already_embed = False) :                             #dat is a dictionary with keys==keyword args of xlm
 
         if self.pll_data :
@@ -76,7 +81,6 @@ class xlmb2b(torch.nn.Module):
             mem_key_pad_mask = inp['attention_mask']
             tgt_mask = self.get_tgt_mask(self.max_tr_seq_len)
             tr_embd = torch.zeros((self.batch_size, self.max_tr_seq_len, self.d_model))
-            tr_embd = tr_embd
             not_done_samples = torch.tensor([i for i in range(self.batch_size)])
             it_no = 0                                                           #if nth word of target sequence is being predicted,
             final_out = []                                                      #then iteration number(it_no) == n-1
@@ -101,5 +105,5 @@ class xlmb2b(torch.nn.Module):
                 tgt_key_pad_mask[ind,it_no+1] = torch.ones((ind.shape[0],1))
                 if not_done_samples.shape[0]==0 or it_no==self.max_tr_seq_len-1:
                     return torch.stack(final_out), sr_embed , tr_embd, lengs
-                tr_embd[ind,it_no,:] = self.xlm.embeddings(output_at_it_no)		      #Adding next words embeddings to context for decoder
+                tr_embd[ind,it_no,:] = self.embed_for_decoder(output_at_it_no, it_no, inp['langs'][:,it_no])		      #Adding next words embeddings to context for decoder
                 it_no+=1
