@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from preprocessing import tokenizer
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
+from samplers import simpler_sampler, beam_search
 
 batch_size = 32
 dic = tokenizer.decoder
@@ -11,7 +12,7 @@ class xlmb2b(torch.nn.Module):
         super().__init__()
         self.xlm = XLMModel.from_pretrained('xlm-mlm-ende-1024')
         self.d_model = d_model
-        decoder_layer = torch.nn.TransformerDecoderLayer(self.d_model, n_head=8)
+        decoder_layer = torch.nn.TransformerDecoderLayer(self.d_model, nhead=8)
         self.trnsfrmr_dcodr = torch.nn.TransformerDecoder(decoder_layer, num_layers=trfrmr_nlayers)
         self.pll_data = pll_dat
         self.batch_size = batch_size
