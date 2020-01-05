@@ -38,3 +38,6 @@ class clone_batch() :
             att_mask.append( torch.stack([torch.cat([torch.zeros((i*elem)), torch.ones((elem)), torch.zeros((max_size-(i+1)*elem))])
                                                 for i in range(self.n)]) )
         return torch.cat(att_mask)
+
+
+

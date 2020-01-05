@@ -118,7 +118,11 @@ class xlmb2b(torch.nn.Module):
             self.it_no = 0                                                           #if nth word of target sequence is being predicted,
             self.final_out = []                                                      #then iteration number(it_no) == n-1
             self.lengs = torch.zeros((bs))
-            self.prev_probs = torch.zeros((bs/self.beam_size,self.max_tr_seq_len+1,self.beam_size))
+
+            if self.beam_size==1 :
+                self.prev_probs = torch.zeros((bs/self.beam_size,self.max_tr_seq_len+1,self.beam_size))
+            else :
+                self.probs = []
 
             while True :
                 trfrmr_out = self.trnsfrmr_dcodr(tgt=self.tr_embd.transpose(1,2), memory=self.sr_embd.transpose(1,2), tgt_mask=tgt_mask,
@@ -126,6 +130,8 @@ class xlmb2b(torch.nn.Module):
                                                  memory_key_padding_mask=self.mem_key_pad_mask)
                 trfrmr_out = trfrmr_out.transpse(1,2)
                 trfrmr_out = self.apply_final_layer(trfrmr_out)
+                if self.beam_size==1 :
+                    self.probs.append(trfrmr_out)
                 dic_indices = self.reform(trfrmr_out)
                 output_at_it_no = torch.zeros((self.bs,1))
                 output_at_it_no[self.not_done_samples] = self.dic_tensor[dic_indices]
@@ -141,7 +147,7 @@ class xlmb2b(torch.nn.Module):
                 if self.not_done_samples.shape[0]==0 or self.it_no==self.max_tr_seq_len-1:
                     self.it_no = None
                     if self.beam_size==1 :
-                        return torch.stack(self.final_out).transpose(0,1), self.sr_embd , self.tr_embd, self.lengs
+                        return torch.stack(self.probs).transpose(0,1), self.sr_embd, self.tr_embd, torch.stack(self.final_out).transpose(0,1)
                     else :
                         return self.choose()
                 self.tr_embd[ind,self.it_no,:] = self.embed_for_decoder(output_at_it_no, inp['langs'][:,self.it_no])		      #Adding next words embeddings to context for decoder
