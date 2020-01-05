@@ -2,7 +2,6 @@ import numpy as np
 import torch
 from preprocessing import tokenizer
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
-from samplers import simpler_sampler, beam_search
 
 batch_size = 32
 dic = tokenizer.decoder
