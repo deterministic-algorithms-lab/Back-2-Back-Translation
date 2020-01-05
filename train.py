@@ -5,10 +5,15 @@ from dataset import pll_datst, coll, mono_datst
 from preprocessing import load_data, tokenizer
 from model import xlmb2b
 import tqdm
+from os import path
 
 from nltk.translate.bleu_score import corpus_bleu
 
-data_obj = load_data()
+if path.exists("../../data/file_1.csv"):
+	data_obj = load_data(load_ = False)
+else:
+	data_obj = load_data()
+
 df_prllel, df_en, df_de = data_obj.final_data()
 
 pll_train_ds = pll_datst(df_prllel)
@@ -79,6 +84,8 @@ thresh = 0.5
 losses = [[1000, 1000]]
 
 for epoch in tqdm(range(num_epochs)) :
+
+  print(epoch)
 
   model_ed.pll_dat = True
   model_de.pll_dat = True
