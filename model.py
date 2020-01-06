@@ -26,14 +26,14 @@ class xlmb2b(torch.nn.Module):
         self.beam_size = 1
 
     def get_tgt_mask(self, tr_len) :
-        x = np.zeros((tr_len,tr_len))
+        x = np.zeros((tr_len,tr_len), dtype=np.float32)
         upp_indices = np.triu_indices(tr_len)
         x[upp_indices] = -np.inf
-        return torch.tensor(x).to(device)
+        return torch.tensor(x, dtype=np.float32).to(device)
 
     def convert_mask_to_inf(mask):
-        mask[mask==1] = 0
         mask[mask==0] = -np.inf
+        mask[mask==1] = 0
         return mask
 
     def final_layer(self, trfrmr_out, mask) :
@@ -41,7 +41,7 @@ class xlmb2b(torch.nn.Module):
         x = trfrmr_out+mask
         return self.softmax(self.final_linear(x).reshape(-1, self.vocab_size)).reshape(trfrmr_out.shape[0],-1,self.vocab_size)
 
-    def apply_final_layer(self, trfrmr_out) :
+    def apply_final_layer(self, trfrmr_out, mask) :
         if self.it_no is not None :
             trfrmr_out, mask = trfrmr_out[self.samples_to_do], self.tgt_key_pad_mask[self.samples_to_do]
             mask[:,self.it_no] = 1
