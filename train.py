@@ -79,24 +79,32 @@ def swap(batch,sr_embd,tr_embd,pll=True) :
 
     return batch, z['content'], z, None, None
 
+def freeze_weights(model) :
+    for param in model.parameters() :
+        param.requires_grad = False
+
+def unfreeze_weights(model) :
+    for param in model.parameters() :
+        param.requires_grad = True
+
 
 def set_to_eval(model_lis, beam_size=3) :
     for model in model_lis :
         model.eval()
         model.beam_size = beam_size
 
-def evaluate(model,beam_size=3,i) :
+def evaluate(model, i, beam_size=3) :
     set_to_eval(model,beam_size)
     print(str(i)+"th, Forward Model: ", model[0](c))
     print(str(i)+"th, Backward Model: ", model[1](d))
 
-def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=False)
+def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=False):
     probs, sr_embd, tr_embd, trfrmr_out = model_forward(batch)
     if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), batch['Y']['content'].reshape(-1,1))
     if not send_trfrmr_out :
         batch, a, b, c, d = swap(batch, batch['X']['content'], trfrmr_out, pll)
     batch, a, b, c, d = swap(batch, sr_embd, tr_embd, pll)
-    probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, !send_trfrmr_out)
+    probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
     loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), a.reshape(-1,1)) #since token_id is same as position in vocabulary
     if pll : loss = loss_pll + loss_b2b
     else : loss = loss_b2b
@@ -108,17 +116,10 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
     return a,b,loss
 
 
-def freeze_weights(model) :
-    for param in model.parameters() :
-        param.requires_grad = False
-
-def unfreeze_weights(model) :
-    for param in model.parameters() :
-        param.requires_grad = True
-
 num_epochs = 1000
 thresh = 0.5
-losses_epochs = []
+# losses_epochs = []
+losses_epochs = {"pll" : [], "mono": []}
 optimizers = [optimizer_de,optimizer_ed]
 
 for epoch in tqdm(range(num_epochs)) :
@@ -130,23 +131,25 @@ for epoch in tqdm(range(num_epochs)) :
 
     for i, batch in enumerate(pll_train_loader) :
 
-        batch['Y']['content'], batch['X']['content'], loss1 = run_pll(model_ed,model_de,batch,optimizers)
-        if epoch%20==0 : evaluate([model_ed,model_de],beam_size=3,1)
-        _,_,loss2 = run_pll(model_de,model_ed,batch,optmizers)
-        if epoch%20==0 : evaluate([model_ed,model_de],beam_size=3,2)
+        batch['Y']['content'], batch['X']['content'], loss1 = run(model_ed,model_de,batch,optimizers)
+        if epoch%20==0 : evaluate([model_ed,model_de], 1, beam_size=3)
+        _,_,loss2 = run(model_de,model_ed,batch,optimizers)
+        if epoch%20==0 : evaluate([model_ed,model_de], 2, beam_size=3)
         losses[0].append(loss1)
         losses[1].append(loss2)
-    losses_epochs.append({'pll' : [losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1]]})
+    losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
+#    losses_epochs.append({'pll' : [losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])]})
 
 #Training on monolingual data if the above losses are sufficiently low:
 
-    if(losses_epochs[-1]['pll'][0]<thresh or losses[-1]['pll'][1]<thresh):
+    if(losses_epochs['pll'][-1][0]<thresh or losses['pll'][-1][1]<thresh):
 
         print("Going for Monolingual Training")
 
         model_ed.pll_dat = False
         model_de.pll_dat = False
         losses = [[], []]
+
         for i, batch in enumerate(mono_train_loader_en):
 
             _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
@@ -159,4 +162,5 @@ for epoch in tqdm(range(num_epochs)) :
 
             losses[1].append(loss2)
 
-        losses_epochs.append({'mono':[sum(losses[0])/len(losses[0]), sum(losses[1])/len(losses[1])]})
+        losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])    
+        # losses_epochs.append({'mono':[sum(losses[0])/len(losses[0]), sum(losses[1])/len(losses[1])]})
