@@ -139,6 +139,8 @@ optimizers = [optimizer_de,optimizer_ed]
 thresh_for_xlm_weight_freeze = 0.7
 thresh_for_send_trfrmr_out = 0.9
 
+'''model_ed.xlm
+'''
 for epoch in tqdm(range(num_epochs)) :
 
     print(epoch)

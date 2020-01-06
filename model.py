@@ -32,8 +32,7 @@ class xlmb2b(torch.nn.Module):
         return torch.tensor(x, dtype=np.float32).to(device)
 
     def convert_mask_to_inf(mask):
-        mask[mask==0] = -np.inf
-        mask[mask==1] = 0
+        mask[mask==1] = -np.inf
         return mask
 
     def final_layer(self, trfrmr_out, mask) :
@@ -93,7 +92,7 @@ class xlmb2b(torch.nn.Module):
                 tr_embd = self.xlm(**out)[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
             else :
                 sr_embd = inp['input_ids']
-                tr_embd = inp['input_ids']
+                tr_embd = out['input_ids']
 
             tr_len = out['lengths'].max()
             tgt_mask = self.get_tgt_mask(tr_len)
