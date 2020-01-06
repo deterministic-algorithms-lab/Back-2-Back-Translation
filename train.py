@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from dataset import pll_datst, coll, mono_datst
 from preprocessing import load_data, tokenizer
 from model import xlmb2b
-import tqdm
+from tqdm import tqdm
 from os import path
 from functools import partial
 from nltk.translate.bleu_score import corpus_bleu
@@ -19,7 +19,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 df_prllel, df_en, df_de = data_obj.final_data()
 pll_train_ds = pll_datst(df_prllel)
-mono_train_ds_eng = mono_datst(df_en)
+mono_train_ds_en = mono_datst(df_en)
 mono_train_ds_de = mono_datst(df_de, lang='de')
 vocab_size = tokenizer.vocab_size
 
@@ -74,16 +74,16 @@ def swap(batch,sr_embd,tr_embd,pll=True) :
         z1 = batch['Y']
         batch['X'] = batch['Y']
         batch['Y'] = z
-        batch['X']['content'] = tr_embd
-        batch['Y']['content'] = sr_embd
+        batch['X']['input_ids'] = tr_embd
+        batch['Y']['input_ids'] = sr_embd
 
-        return batch, z['content'], z1['content'], z, z1
+        return batch, z['input_ids'], z1['input_ids'], z, z1
 
     else:
         z = batch['X']
-        batch['X']['content'] = tr_embd
+        batch['X']['input_ids'] = tr_embd
 
-    return batch, z['content'], z, None, None
+    return batch, z['input_ids'], z, None, None
 
 def freeze_weights(model) :
     for param in model.parameters() :
@@ -93,6 +93,9 @@ def unfreeze_weights(model) :
     for param in model.parameters() :
         param.requires_grad = True
 
+def remove_pad_tokens(tensorr):
+    j = tokenizer.pad_token_id    
+    return tensorr[tensorr!=j]
 
 def set_to_eval(model_lis, beam_size=3) :
     for model in model_lis :
@@ -103,7 +106,7 @@ def send_to_gpu(batch, pll) :
     lis =['X', 'Y'] if pll else ['X']
     for elem in lis :
         for key, value in batch[elem] :
-            batch[elem] = value.to(device, non_blocking=True)
+            batch[elem][key] = value.to(device, non_blocking=True)
 
 def evaluate(model, i, beam_size=3) :
     set_to_eval(model,beam_size)
@@ -112,9 +115,9 @@ def evaluate(model, i, beam_size=3) :
 
 def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=False):
     probs, sr_embd, tr_embd, trfrmr_out = model_forward(batch)
-    if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), batch['Y']['content'].reshape(-1,1))
+    if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), remove_pad_tokens(batch['Y']['input_ids'].reshape(-1)) )
     if not send_trfrmr_out :
-        batch, a, b, c, d = swap(batch, batch['X']['content'], trfrmr_out, pll)
+        batch, a, b, c, d = swap(batch, batch['X']['input_ids'], trfrmr_out, pll)
     else :
         batch, a, b, c, d = swap(batch, sr_embd, tr_embd, pll)
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
@@ -145,7 +148,7 @@ for epoch in tqdm(range(num_epochs)) :
 
     for i, batch in enumerate(pll_train_loader) :
         batch = send_to_gpu(batch, pll=True)
-        batch['Y']['content'], batch['X']['content'], loss1 = run(model_ed,model_de,batch,optimizers)
+        batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
         if epoch%20==0 : evaluate([model_ed,model_de], 1, beam_size=3)
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
         if epoch%20==0 : evaluate([model_ed,model_de], 2, beam_size=3)

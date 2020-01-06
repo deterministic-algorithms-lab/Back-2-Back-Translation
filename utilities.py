@@ -10,13 +10,13 @@ class clone_batch() :
         '''Obtains all possible samples from 1 sample
            and returns 'sample' with content,position_ids
            and langs of size [self.n, z*self.n]
-           of form (if self.n=3 and z=4 and sample['content']=[abcd]) :-
-           sample['content'].t():- [[abcd00000000],
+           of form (if self.n=3 and z=4 and sample['input_ids']=[abcd]) :-
+           sample['input_ids'].t():- [[abcd00000000],
                                     [0000abcd0000],
                                     [00000000abcd]]'''
         l = ['X', 'Y'] if self.pll_dat else ['X']
         for key in l :
-            z = len(sample[key]['content'])
+            z = len(sample[key]['input_ids'])
             for subkey in sample[key] :
                 if subkey != 'lengths' :
                     sample[key][subkey] = torch.stack([torch.cat([torch.zeros((i*z)), sample[key][subkey], torch.zeros(((self.n-i-1)*z))])

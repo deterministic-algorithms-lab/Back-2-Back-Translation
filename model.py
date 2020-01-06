@@ -4,6 +4,7 @@ import torch.nn as nn
 from preprocessing import tokenizer
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
 
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 batch_size = 32
 dic = tokenizer.decoder
 
@@ -17,10 +18,10 @@ class xlmb2b(torch.nn.Module):
         self.pll_data = pll_dat
         self.mx_tr_seq_len = 120
         self.end_tok = 1 #Token id of end token
-        self.softmax = nn.Softmax(dim=0)
+        self.softmax = nn.Softmax(dim=1)
         self.dic_tensor = torch.tensor([v for k,v in tokenizer.encoder.items()]) #tensor with i_th token's id at i_th position
         self.vocab_size = self.dic_tensor.shape[0]
-        self.final_layer = nn.Linear(self.d_model, self.vocab_size)
+        self.final_linear = nn.Linear(self.d_model, self.vocab_size)
         self.it_no = None
         self.beam_size = 1
 
@@ -28,7 +29,7 @@ class xlmb2b(torch.nn.Module):
         x = np.zeros((tr_len,tr_len))
         upp_indices = np.triu_indices(tr_len)
         x[upp_indices] = -np.inf
-        return torch.tensor(x)
+        return torch.tensor(x).to(device)
 
     def convert_mask_to_inf(mask):
         mask[mask==1] = 0
@@ -46,7 +47,7 @@ class xlmb2b(torch.nn.Module):
             mask[:,self.it_no] = 1
         return self.final_layer(trfrmr_out, mask)
 
-    def embed_for_decoder(output_at_it_no, lang_long_tensor) :
+    def embed_for_decoder(self, output_at_it_no, lang_long_tensor) :
         y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
         z = y + self.xlm.position_embeddings(self.it_no).expand_as(y)
         return z+self.xlm.lang_embeddings(lang_id)
@@ -91,15 +92,15 @@ class xlmb2b(torch.nn.Module):
                 sr_embd = self.xlm(**inp)[0]
                 tr_embd = self.xlm(**out)[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
             else :
-                sr_embd = inp['content']
-                tr_embd = inp['content']
+                sr_embd = inp['input_ids']
+                tr_embd = inp['input_ids']
 
             tr_len = out['lengths'].max()
             tgt_mask = self.get_tgt_mask(tr_len)
-            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(1,2), memory=sr_embd.transpose(1,2), tgt_mask=tgt_mask,
-                                             tgt_key_padding_mask=out['attention_mask'],
-                                             memory_key_padding_mask=inp['attention_mask'])
-            trfrmr_out = trfrmr_out.transpse(1,2)
+            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1), memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
+                                             tgt_key_padding_mask=out['attention_mask'].byte(),
+                                             memory_key_padding_mask=inp['attention_mask'].byte())
+            trfrmr_out = trfrmr_out.transpose(0,1)
             probs = self.apply_final_layer(trfrmr_out, out['attention_mask'])
 
             return probs, sr_embd, tr_embd, trfrmr_out
@@ -108,7 +109,7 @@ class xlmb2b(torch.nn.Module):
 
             inp = dat['X']
             self.sr_embd = self.xlm(**inp)[0].repeat((self.beam_size,1,1))
-            self.bs = inp['content'].shape[0]*self.beam_size
+            self.bs = inp['input_ids'].shape[0]*self.beam_size
             self.tgt_key_pad_mask = torch.zeros((self.bs, self.max_tr_seq_len))
             self.mem_key_pad_mask = inp['attention_mask'].repeat((self.beam_size,1))
             tgt_mask = self.get_tgt_mask(self.max_tr_seq_len)
@@ -124,10 +125,10 @@ class xlmb2b(torch.nn.Module):
                 self.probs = []
 
             while True :
-                trfrmr_out = self.trnsfrmr_dcodr(tgt=self.tr_embd.transpose(1,2), memory=self.sr_embd.transpose(1,2), tgt_mask=tgt_mask,
-                                                 tgt_key_padding_mask=self.tgt_key_pad_mask,
-                                                 memory_key_padding_mask=self.mem_key_pad_mask)
-                trfrmr_out = trfrmr_out.transpse(1,2)
+                trfrmr_out = self.trnsfrmr_dcodr(tgt=self.tr_embd.transpose(0,1), memory=self.sr_embd.transpose(0,1), tgt_mask=tgt_mask,
+                                                 tgt_key_padding_mask=self.tgt_key_pad_mask.byte(),
+                                                 memory_key_padding_mask=self.mem_key_pad_mask.byte())
+                trfrmr_out = trfrmr_out.transpse(0,1)
                 trfrmr_out = self.apply_final_layer(trfrmr_out)
                 if self.beam_size==1 :
                     self.probs.append(trfrmr_out)

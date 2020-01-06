@@ -1,6 +1,8 @@
 from torch.utils.data import Dataset, DataLoader
-from preprocedding import tokenizer
-import torch.nn.utils.rnn.pad_sequence as padd
+from preprocessing import tokenizer
+from torch.nn.utils.rnn import pad_sequence as padd
+import torch
+import torch.nn as nn
 
 class pll_datst(Dataset) :
     def __init__(self, df, sr_lang = 'en', tr_lang = 'de') :
@@ -13,9 +15,9 @@ class pll_datst(Dataset) :
     def __getitem__(self, i) :
         zs = self.df.loc[i,self.sr_lang].shape[0]
         zt = self.df.loc[i,self.tr_lang].shape[0]
-        return {'X' : {'content' : self.df.loc[i,self.sr_lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.sr_lang]]*zs),
+        return {'X' : {'input_ids' : self.df.loc[i,self.sr_lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.sr_lang]]*zs),
           'position_ids' : torch.LongTensor([i for i in range(zs)]) , 'lengths' : zs } ,
-          'Y' : {'content' : self.df.loc[i,self.tr_lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.tr_lang]]*zt),
+          'Y' : {'input_ids' : self.df.loc[i,self.tr_lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.tr_lang]]*zt),
           'position_ids' : torch.LongTensor([i for i in range(zt)]) , 'lengths' : zt }  }
 
 class mono_datst(Dataset) :
@@ -27,7 +29,7 @@ class mono_datst(Dataset) :
         return len(self.df)
     def __getitem__(self,i) :
         z = self.df.loc[i,self.lang].shape[0]
-        return {'X' : {'content' : self.df.loc[i,self.lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.lang]]*z),
+        return {'X' : {'input_ids' : self.df.loc[i,self.lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.lang]]*z),
                   'position_ids' : torch.LongTensor([i for i in range(z)]) , 'lenghts' : z } }
 
 def coll(batch, pll_dat) :
@@ -36,10 +38,10 @@ def coll(batch, pll_dat) :
     l = ['X','Y'] if pll_dat else ['X']
     for key in l :
         batch1 = {}
-        batch1['content'] = padd([batch[i][key]['content'] for i in range(b_sz)], batch_first=True, padding_value=2)
+        batch1['input_ids'] = padd([batch[i][key]['input_ids'] for i in range(b_sz)], batch_first=True, padding_value=2)
         batch1['langs'] = padd([batch[i][key]['langs'] for i in range(b_sz)], batch_first=True, padding_value=2)
         batch1['position_ids'] = padd([batch[i][key]['position_ids'] for i in range(b_sz)], batch_first=True, padding_value=2)
-        batch1['lengths'] = padd([batch[i][key]['lengths'] for i in range(b_sz)], batch_first=True, padding_value=2)
+        batch1['lengths'] = torch.tensor([batch[i][key]['lengths'] for i in range(b_sz)])
         batch1['attention_mask'] = torch.stack([torch.cat([torch.ones(batch[i][key]['lengths']),
                                                                      torch.zeros(batch1['lengths'].max()-batch[i][key]['lengths'])], dim=0)
                                                                      for i in range(b_sz)])
