@@ -37,14 +37,14 @@ class load_data():
 			df_de = pd.DataFrame(self.trgt_tokens)
 			d = 0
 			for df in [df_prllel, df_eng, df_de]:
-				with open('../../data/file_'+str(d)+'.json', 'wb+') as f :
+				with open('../../data/file_'+str(d)+'.pkl', 'wb+') as f :
                     pickle.dump(df,f)
 				d = d+1
 		else:
 			[df_prllel,df_en,df_de] = [None]*3
             d=0
             for var in [df_prllel,df_en, df_de] :
-                with open('../../data/file_'+str(d)+'.json', 'rb') as f :
+                with open('../../data/file_'+str(d)+'.pkl', 'rb') as f :
                     var = pickle.load(f)
                 d=d+1
 		return df_prllel, df_eng, df_de
