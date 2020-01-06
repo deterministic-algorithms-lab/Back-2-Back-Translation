@@ -37,7 +37,7 @@ class xlmb2b(torch.nn.Module):
 
     def final_layer(self, trfrmr_out, mask) :
         mask = self.convert_mask_to_inf(mask)
-        x = trfrmr_out+mask
+        x = (trfrmr_out.transpose(2,1).transpose(1,0)+mask).transpose(0,1).transpose(1,2)
         return self.softmax(self.final_linear(x).reshape(-1, self.vocab_size)).reshape(trfrmr_out.shape[0],-1,self.vocab_size)
 
     def apply_final_layer(self, trfrmr_out, mask) :
