@@ -1,5 +1,6 @@
 from torch.utils.data import Dataset, DataLoader
 from preprocedding import tokenizer
+import torch.nn.utils.rnn.pad_sequence as padd
 
 class pll_datst(Dataset) :
     def __init__(self, df, sr_lang = 'en', tr_lang = 'de') :
@@ -35,10 +36,10 @@ def coll(batch, pll_dat) :
     l = ['X','Y'] if pll_dat else ['X']
     for key in l :
         batch1 = {}
-        batch1['content'] = torch.nn.utils.rnn.pad_sequence([batch[i][key]['content'] for i in range(b_sz)])
-        batch1['langs'] = torch.stack([batch[i][key]['langs'] for i in range(b_sz)])
-        batch1['position_ids'] = torch.stack([batch[i][key]['position_ids'] for i in range(b_sz)])
-        batch1['lengths'] = torch.stack([batch[i][key]['lengths'] for i in range(b_sz)])
+        batch1['content'] = padd([batch[i][key]['content'] for i in range(b_sz)], batch_first=True, padding_value=2)
+        batch1['langs'] = padd([batch[i][key]['langs'] for i in range(b_sz)], batch_first=True, padding_value=2)
+        batch1['position_ids'] = padd([batch[i][key]['position_ids'] for i in range(b_sz)], batch_first=True, padding_value=2)
+        batch1['lengths'] = padd([batch[i][key]['lengths'] for i in range(b_sz)], batch_first=True, padding_value=2)
         batch1['attention_mask'] = torch.stack([torch.cat([torch.ones(batch[i][key]['lengths']),
                                                                      torch.zeros(batch1['lengths'].max()-batch[i][key]['lengths'])], dim=0)
                                                                      for i in range(b_sz)])

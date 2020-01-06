@@ -1,7 +1,7 @@
 import torch
 import pandas as pd
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
-import json
+import pickle
 
 tokenizer = XLMTokenizer.from_pretrained("xlm-mlm-ende-1024")
 
@@ -38,13 +38,13 @@ class load_data():
 			d = 0
 			for df in [df_prllel, df_eng, df_de]:
 				with open('../../data/file_'+str(d)+'.json', 'wb+') as f :
-                    json.dump(df,f)
+                    pickle.dump(df,f)
 				d = d+1
 		else:
 			[df_prllel,df_en,df_de] = [None]*3
             d=0
             for var in [df_prllel,df_en, df_de] :
                 with open('../../data/file_'+str(d)+'.json', 'rb') as f :
-                    var = json.load(f)
+                    var = pickle.load(f)
                 d=d+1
 		return df_prllel, df_eng, df_de
