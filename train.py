@@ -6,16 +6,18 @@ from preprocessing import load_data, tokenizer
 from model import xlmb2b
 import tqdm
 from os import path
-
+from functools import partial
 from nltk.translate.bleu_score import corpus_bleu
+import multiprocessing as mp
 
 if path.exists("../../data/file_1.csv"):
 	data_obj = load_data(load_ = False)
 else:
 	data_obj = load_data()
 
-df_prllel, df_en, df_de = data_obj.final_data()
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
+df_prllel, df_en, df_de = data_obj.final_data()
 pll_train_ds = pll_datst(df_prllel)
 mono_train_ds_eng = mono_datst(df_en)
 mono_train_ds_de = mono_datst(df_de, lang='de')
@@ -24,12 +26,16 @@ vocab_size = tokenizer.vocab_size
 b_sz = 32
 batch_size = 32
 d_model = 1024
-model_ed = xlmb2b()
-model_de = xlmb2b()
 
-pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True))
-mono_train_loader_en = DataLoader(mono_train_ds_en, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False))
-mono_train_loader_de = DataLoader(mono_train_ds_de, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False))
+model_ed = xlmb2b().double().to(device)
+model_de = xlmb2b().double().to(device)
+model_ed.xlm = model_de.xlm
+del model_ed.xlm
+
+cpus = mp.cpu_count()
+pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)
+mono_train_loader_en = DataLoader(mono_train_ds_en, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
+mono_train_loader_de = DataLoader(mono_train_ds_de, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
 optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
 optimizer_de = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
 mseloss = nn.MSELoss()
@@ -93,6 +99,12 @@ def set_to_eval(model_lis, beam_size=3) :
         model.eval()
         model.beam_size = beam_size
 
+def send_to_gpu(batch, pll) :
+    lis =['X', 'Y'] if pll else ['X']
+    for elem in lis :
+        for key, value in batch[elem] :
+            batch[elem] = value.to(device, non_blocking=True)
+
 def evaluate(model, i, beam_size=3) :
     set_to_eval(model,beam_size)
     print(str(i)+"th, Forward Model: ", model[0](c))
@@ -103,7 +115,8 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
     if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), batch['Y']['content'].reshape(-1,1))
     if not send_trfrmr_out :
         batch, a, b, c, d = swap(batch, batch['X']['content'], trfrmr_out, pll)
-    batch, a, b, c, d = swap(batch, sr_embd, tr_embd, pll)
+    else :
+        batch, a, b, c, d = swap(batch, sr_embd, tr_embd, pll)
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
     loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), a.reshape(-1,1)) #since token_id is same as position in vocabulary
     if pll : loss = loss_pll + loss_b2b
@@ -117,10 +130,11 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
 
 
 num_epochs = 1000
-thresh = 0.5
-# losses_epochs = []
+thresh_for_mono_data = 0.5
 losses_epochs = {"pll" : [], "mono": []}
 optimizers = [optimizer_de,optimizer_ed]
+thresh_for_xlm_weight_freeze = 0.7
+thresh_for_send_trfrmr_out = 0.9
 
 for epoch in tqdm(range(num_epochs)) :
 
@@ -130,7 +144,7 @@ for epoch in tqdm(range(num_epochs)) :
     losses = [[], []]
 
     for i, batch in enumerate(pll_train_loader) :
-
+        batch = send_to_gpu(batch, pll=True)
         batch['Y']['content'], batch['X']['content'], loss1 = run(model_ed,model_de,batch,optimizers)
         if epoch%20==0 : evaluate([model_ed,model_de], 1, beam_size=3)
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
@@ -138,11 +152,10 @@ for epoch in tqdm(range(num_epochs)) :
         losses[0].append(loss1)
         losses[1].append(loss2)
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
-#    losses_epochs.append({'pll' : [losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])]})
 
 #Training on monolingual data if the above losses are sufficiently low:
 
-    if(losses_epochs['pll'][-1][0]<thresh or losses['pll'][-1][1]<thresh):
+    if(losses_epochs['pll'][-1][0]<thresh_for_mono_data or losses['pll'][-1][1]<thresh_for_mono_data):
 
         print("Going for Monolingual Training")
 
@@ -151,16 +164,17 @@ for epoch in tqdm(range(num_epochs)) :
         losses = [[], []]
 
         for i, batch in enumerate(mono_train_loader_en):
+            batch = send_to_gpu(batch, pll=False)
 
             _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
 
             losses[0].append(loss1)
 
         for i, batch in enumerate(mono_train_loader_de):
+            batch = send_to_gpu(batch, pll=False)
 
             _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
 
             losses[1].append(loss2)
 
-        losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])    
-        # losses_epochs.append({'mono':[sum(losses[0])/len(losses[0]), sum(losses[1])/len(losses[1])]})
+        losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])

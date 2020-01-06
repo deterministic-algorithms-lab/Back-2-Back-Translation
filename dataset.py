@@ -1,4 +1,5 @@
 from torch.utils.data import Dataset, DataLoader
+from preprocedding import tokenizer
 
 class pll_datst(Dataset) :
     def __init__(self, df, sr_lang = 'en', tr_lang = 'de') :
@@ -7,13 +8,13 @@ class pll_datst(Dataset) :
         self.sr_lang = sr_lang
         self.tr_lang = tr_lang
     def __len__(self) :
-        return len(df)
+        return len(self.df)
     def __getitem__(self, i) :
         zs = self.df.loc[i,self.sr_lang].shape[0]
         zt = self.df.loc[i,self.tr_lang].shape[0]
-        return {'X' : {'content' : self.df.loc[i,self.sr_lang], 'langs' : torch.LongTensor([model.config.lang2id[self.sr_lang]]*zs),
+        return {'X' : {'content' : self.df.loc[i,self.sr_lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.sr_lang]]*zs),
           'position_ids' : torch.LongTensor([i for i in range(zs)]) , 'lengths' : zs } ,
-          'Y' : {'content' : self.df.loc[i,self.tr_lang], 'langs' : torch.LongTensor([model.config.lang2id[self.tr_lang]]*zt),
+          'Y' : {'content' : self.df.loc[i,self.tr_lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.tr_lang]]*zt),
           'position_ids' : torch.LongTensor([i for i in range(zt)]) , 'lengths' : zt }  }
 
 class mono_datst(Dataset) :
@@ -22,10 +23,10 @@ class mono_datst(Dataset) :
         self.df = df
         self.lang = lang
     def __len__(self) :
-        return len(df)
+        return len(self.df)
     def __getitem__(self,i) :
         z = self.df.loc[i,self.lang].shape[0]
-        return {'X' : {'content' : self.df.loc[i,self.lang], 'langs' : torch.LongTensor([model.config.lang2id[self.lang]]*z),
+        return {'X' : {'content' : self.df.loc[i,self.lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.lang]]*z),
                   'position_ids' : torch.LongTensor([i for i in range(z)]) , 'lenghts' : z } }
 
 def coll(batch, pll_dat) :

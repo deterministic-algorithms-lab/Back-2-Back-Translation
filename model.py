@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 from preprocessing import tokenizer
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
 
@@ -16,11 +17,10 @@ class xlmb2b(torch.nn.Module):
         self.pll_data = pll_dat
         self.mx_tr_seq_len = 120
         self.end_tok = 1 #Token id of end token
-        self.simpler_sampler = simpler_sampler(dic, b_sz = 256, d_model=1024, lang='en')
-        self.final_layer = nn.Linear(self.d_model, self.vocab_size)
         self.softmax = nn.Softmax(dim=0)
         self.dic_tensor = torch.tensor([v for k,v in tokenizer.encoder.items()]) #tensor with i_th token's id at i_th position
         self.vocab_size = self.dic_tensor.shape[0]
+        self.final_layer = nn.Linear(self.d_model, self.vocab_size)
         self.it_no = None
         self.beam_size = 1
 

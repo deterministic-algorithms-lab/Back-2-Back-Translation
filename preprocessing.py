@@ -1,6 +1,7 @@
 import torch
 import pandas as pd
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
+import json
 
 tokenizer = XLMTokenizer.from_pretrained("xlm-mlm-ende-1024")
 
@@ -23,7 +24,7 @@ class load_data():
 
 		with open(self.trgt_lang_path, 'rt') as f:
 		  while(i!=2*self.pll_size):
-		    input_ids = torch.tensor(tokenizer.encode(f.readline()))
+		    input_ids = torch.tensor(tokenizer.encode('<s>'+f.readline()+'</s>')[1:-1])
 		    self.trgt_tokens.append(input_ids)
 		    i = i + 1
 
@@ -36,11 +37,14 @@ class load_data():
 			df_de = pd.DataFrame(self.trgt_tokens)
 			d = 0
 			for df in [df_prllel, df_eng, df_de]:
-				df.to_csv('../../data/file_'+str(d)+'.csv', header=False, index = False)
+				with open('../../data/file_'+str(d)+'.json', 'wb+') as f :
+                    json.dump(df,f)
 				d = d+1
 		else:
-			df_prllel = pd.read_csv('../../data/file_0.csv')
-			df_eng = pd.read_csv('../../data/file_1.csv')
-			df_de = pd.read_csv('../../data/file_2.csv')
-
+			[df_prllel,df_en,df_de] = [None]*3
+            d=0
+            for var in [df_prllel,df_en, df_de] :
+                with open('../../data/file_'+str(d)+'.json', 'rb') as f :
+                    var = json.load(f)
+                d=d+1
 		return df_prllel, df_eng, df_de
