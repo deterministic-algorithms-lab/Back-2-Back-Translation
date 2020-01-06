@@ -108,6 +108,14 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
     return a,b,loss
 
 
+def freeze_weights(model) :
+    for param in model.parameters() :
+        param.requires_grad = False
+
+def unfreeze_weights(model) :
+    for param in model.parameters() :
+        param.requires_grad = True
+
 num_epochs = 1000
 thresh = 0.5
 losses_epochs = []
