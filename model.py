@@ -27,7 +27,7 @@ class xlmb2b(torch.nn.Module):
 
     def get_tgt_mask(self, tr_len) :
         x = np.zeros((tr_len,tr_len), dtype=np.float32)
-        upp_indices = np.triu_indices(tr_len)
+        upp_indices = np.triu_indices(tr_len, k=1)
         x[upp_indices] = -np.inf
         return torch.tensor(x, dtype=np.float32).to(device)
 
@@ -96,7 +96,8 @@ class xlmb2b(torch.nn.Module):
 
             tr_len = out['lengths'].max()
             tgt_mask = self.get_tgt_mask(tr_len)
-            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1), memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
+            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1),
+                                             memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
                                              tgt_key_padding_mask=out['attention_mask'].byte(),
                                              memory_key_padding_mask=inp['attention_mask'].byte())
             trfrmr_out = trfrmr_out.transpose(0,1)
@@ -124,7 +125,8 @@ class xlmb2b(torch.nn.Module):
                 self.probs = []
 
             while True :
-                trfrmr_out = self.trnsfrmr_dcodr(tgt=self.tr_embd.transpose(0,1), memory=self.sr_embd.transpose(0,1), tgt_mask=tgt_mask,
+                trfrmr_out = self.trnsfrmr_dcodr(tgt=self.tr_embd.transpose(0,1),
+                                                 memory=self.sr_embd.transpose(0,1), tgt_mask=tgt_mask,
                                                  tgt_key_padding_mask=self.tgt_key_pad_mask.byte(),
                                                  memory_key_padding_mask=self.mem_key_pad_mask.byte())
                 trfrmr_out = trfrmr_out.transpse(0,1)
