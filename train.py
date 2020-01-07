@@ -66,24 +66,28 @@ def reshape_n_edit(probs) :
      the rows with all nan probs are due to padding of all
      sequences to same length'''
   y = probs.reshape(-1,vocab_size)
-  return y[y==y]
+  return y[y==y].reshape(-1,vocab_size)
 
 def swap(batch,sr_embd,tr_embd,pll=True) :
     if pll:
-        z = batch['X']
-        z1 = batch['Y']
+        z2=batch['X']
+        z = batch['X']['input_ids'].clone()
+        z1 = batch['Y']['input_ids'].clone()
         batch['X'] = batch['Y']
-        batch['Y'] = z
+        batch['Y'] = z2
         batch['X']['input_ids'] = tr_embd
         batch['Y']['input_ids'] = sr_embd
-
-        return batch, z['input_ids'], z1['input_ids'], z, z1
+        return batch, z, z1
 
     else:
-        z = batch['X']
+        z = batch['X']['input_ids'].clone()
         batch['X']['input_ids'] = tr_embd
-
-    return batch, z['input_ids'], z, None, None
+        batch1 = {}
+        batch1['X']['input_ids'] = z
+        for k,v in batch :
+            if k!='input_ids' :
+                batch1['X'][k]=v
+    return batch, z, batch1
 
 def freeze_weights(model) :
     for param in model.parameters() :
@@ -94,7 +98,7 @@ def unfreeze_weights(model) :
         param.requires_grad = True
 
 def remove_pad_tokens(tensorr):
-    j = tokenizer.pad_token_id    
+    j = tokenizer.pad_token_id
     return tensorr[tensorr!=j]
 
 def set_to_eval(model_lis, beam_size=3) :
@@ -116,12 +120,14 @@ def evaluate(model, i, beam_size=3) :
 def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=False):
     probs, sr_embd, tr_embd, trfrmr_out = model_forward(batch)
     if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), remove_pad_tokens(batch['Y']['input_ids'].reshape(-1)) )
-    if not send_trfrmr_out :
-        batch, a, b, c, d = swap(batch, batch['X']['input_ids'], trfrmr_out, pll)
+    if send_trfrmr_out :
+        batch, a, b = swap(batch, batch['X']['input_ids'], trfrmr_out, pll)
     else :
-        batch, a, b, c, d = swap(batch, sr_embd, tr_embd, pll)
+        batch, a, b = swap(batch, sr_embd, tr_embd, pll)
+    del probs
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
-    loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), a.reshape(-1,1)) #since token_id is same as position in vocabulary
+    loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
+    del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, trfrmr_out, trfrmr_out_
     if pll : loss = loss_pll + loss_b2b
     else : loss = loss_b2b
     for optimizer in optimizers :
@@ -139,8 +145,6 @@ optimizers = [optimizer_de,optimizer_ed]
 thresh_for_xlm_weight_freeze = 0.7
 thresh_for_send_trfrmr_out = 0.9
 
-'''model_ed.xlm
-'''
 for epoch in tqdm(range(num_epochs)) :
 
     print(epoch)
