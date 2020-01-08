@@ -32,6 +32,8 @@ class mono_datst(Dataset) :
         return {'X' : {'input_ids' : self.df.loc[i,self.lang], 'langs' : torch.LongTensor([tokenizer.lang2id[self.lang]]*z),
                   'position_ids' : torch.LongTensor([i for i in range(z)]) , 'lengths' : z } }
 
+pdv = tokenizer.pad_token_id
+
 def coll(batch, pll_dat) :
     b_sz=len(batch)
     batch2 = {}
@@ -41,7 +43,7 @@ def coll(batch, pll_dat) :
         batch1['input_ids'] = padd([batch[i][key]['input_ids'] for i in range(b_sz)], batch_first=True, padding_value=pdv)
         batch1['langs'] = padd([batch[i][key]['langs'] for i in range(b_sz)], batch_first=True, padding_value=pdv)
         batch1['position_ids'] = padd([batch[i][key]['position_ids'] for i in range(b_sz)], batch_first=True, padding_value=pdv)
-        batch1['lengths'] = torch.tensor([batch[i][key]['lengths'] for i in range(b_sz)])
+        batch1['lengths'] = torch.LongTensor([batch[i][key]['lengths'] for i in range(b_sz)])
         batch1['attention_mask'] = torch.stack([torch.cat([torch.zeros(batch[i][key]['lengths'], dtype=torch.float32),
                                                                      torch.ones(batch1['lengths'].max()-batch[i][key]['lengths'], dtype=torch.float32)], dim=0)
                                                                      for i in range(b_sz)])

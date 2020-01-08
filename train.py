@@ -117,6 +117,10 @@ def evaluate(model, i, beam_size=3) :
     print(str(i)+"th, Forward Model: ", model[0](c))
     print(str(i)+"th, Backward Model: ", model[1](d))
 
+def synchronize() :
+    if torch.cuda.is_available() :
+        torch.cuda.synchronize()
+
 def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=False):
     probs, sr_embd, tr_embd, trfrmr_out = model_forward(batch)
     if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), remove_pad_tokens(batch['Y']['input_ids'].reshape(-1)) )
@@ -126,12 +130,13 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
         batch, a, b = swap(batch, sr_embd, tr_embd, pll)
     del probs
     batch['X']['input_ids'] = (~(batch['X']['input_ids'].bool())).float()
-    batch['Y']['input_ids'] = (~(batch['Y']['input_ids'].bool())).float()
+    if pll : batch['Y']['input_ids'] = (~(batch['Y']['input_ids'].bool())).float()
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
     loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
     del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, trfrmr_out, trfrmr_out_
     if pll : loss = loss_pll + loss_b2b
     else : loss = loss_b2b
+    synchronize()
     for optimizer in optimizers :
         optimizer.zero_grad()
     loss.backward()
@@ -157,11 +162,15 @@ for epoch in tqdm(range(num_epochs)) :
     for i, batch in enumerate(pll_train_loader) :
         batch = send_to_gpu(batch, pll=True)
         batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
+        losses[0].append(loss1.item())
+        del loss1
+        synchronize()
         #if epoch%20==0 : evaluate([model_ed,model_de], 1, beam_size=3)
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
         #if epoch%20==0 : evaluate([model_ed,model_de], 2, beam_size=3)
-        losses[0].append(loss1)
-        losses[1].append(loss2)
+        losses[1].append(loss2.item())
+        del loss2
+        synchronize()
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
 
 #Training on monolingual data if the above losses are sufficiently low:
@@ -176,16 +185,17 @@ for epoch in tqdm(range(num_epochs)) :
 
         for i, batch in enumerate(mono_train_loader_en):
             batch = send_to_gpu(batch, pll=False)
-
             _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
-
-            losses[0].append(loss1)
+            losses[0].append(loss1.item())
+            del loss1
+            synchronize()
 
         for i, batch in enumerate(mono_train_loader_de):
+            
             batch = send_to_gpu(batch, pll=False)
-
             _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
-
-            losses[1].append(loss2)
+            losses[1].append(loss2.item())
+            del loss2
+            synchronize()
 
         losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
