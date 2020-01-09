@@ -114,6 +114,10 @@ def send_to_gpu(batch, pll) :
 def evaluate(model, i, beam_size=3) :
     set_to_eval(model,beam_size)
 
+def synchronize() :
+    if torch.cuda.is_available() :
+        torch.cuda.synchronize()
+
 def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=False):
     probs, sr_embd, tr_embd, trfrmr_out = model_forward(batch)
     y = reshape_n_edit(probs)
@@ -124,6 +128,8 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
         batch, a, b = swap(batch, batch['X']['input_ids'], trfrmr_out, pll)
     else :
         batch, a, b  = swap(batch, sr_embd, tr_embd, pll)
+
+    if pll : batch['Y']['input_ids'] = (~(batch['Y']['input_ids'].bool())).float()
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
     y=reshape_n_edit(probs_)
     m=remove_pad_tokens(a.reshape(-1))
@@ -193,13 +199,21 @@ for epoch in tqdm(range(num_epochs)) :
 
             _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
 
-            losses[0].append(loss1)
+            losses[0].append(loss1.item())
+            del loss1
+            if torch.cuda.is_available() :
+                torch.cuda.synchronize()
+
 
         for i, batch in enumerate(mono_train_loader_de):
             batch = send_to_gpu(batch, pll=False)
 
             _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
 
-            losses[1].append(loss2)
+            losses[1].append(loss2.item())
+            del loss2
+
+            if torch.cuda.is_available() :
+                torch.cuda.synchronize()
         
         losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
