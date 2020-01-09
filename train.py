@@ -23,16 +23,17 @@ mono_train_ds_en = mono_datst(df_en)
 mono_train_ds_de = mono_datst(df_de, lang='de')
 vocab_size = tokenizer.vocab_size
 
-b_sz = 32
-batch_size = 32
+b_sz = 1
+batch_size = 1
 d_model = 1024
 
 model_ed = xlmb2b().double().to(device)
 model_de = xlmb2b().double().to(device)
-model_ed.xlm = model_de.xlm
-del model_ed.xlm
+del model_de.xlm
+model_de.xlm = model_ed.xlm
 
-cpus = mp.cpu_count()
+
+cpus = 1 # mp.cpu_count()
 pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)
 mono_train_loader_en = DataLoader(mono_train_ds_en, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
 mono_train_loader_de = DataLoader(mono_train_ds_de, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
@@ -77,17 +78,13 @@ def swap(batch,sr_embd,tr_embd,pll=True) :
         batch['Y'] = z2
         batch['X']['input_ids'] = tr_embd
         batch['Y']['input_ids'] = sr_embd
-        return batch, z, z1
+        return batch, z, z1 
 
     else:
-        z = batch['X']['input_ids'].clone()
+        z = batch['X']
         batch['X']['input_ids'] = tr_embd
-        batch1 = {}
-        batch1['X']['input_ids'] = z
-        for k,v in batch :
-            if k!='input_ids' :
-                batch1['X'][k]=v
-    return batch, z, batch1
+
+    return batch, z['input_ids'], z
 
 def freeze_weights(model) :
     for param in model.parameters() :
@@ -98,8 +95,9 @@ def unfreeze_weights(model) :
         param.requires_grad = True
 
 def remove_pad_tokens(tensorr):
-    j = tokenizer.pad_token_id
+    j = tokenizer.pad_token_id    
     return tensorr[tensorr!=j]
+
 
 def set_to_eval(model_lis, beam_size=3) :
     for model in model_lis :
@@ -109,34 +107,32 @@ def set_to_eval(model_lis, beam_size=3) :
 def send_to_gpu(batch, pll) :
     lis =['X', 'Y'] if pll else ['X']
     for elem in lis :
-        for key, value in batch[elem] :
+        for key, value in batch[elem].items() :
             batch[elem][key] = value.to(device, non_blocking=True)
+    return batch
 
 def evaluate(model, i, beam_size=3) :
     set_to_eval(model,beam_size)
-    print(str(i)+"th, Forward Model: ", model[0](c))
-    print(str(i)+"th, Backward Model: ", model[1](d))
-
-def synchronize() :
-    if torch.cuda.is_available() :
-        torch.cuda.synchronize()
 
 def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=False):
     probs, sr_embd, tr_embd, trfrmr_out = model_forward(batch)
-    if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), remove_pad_tokens(batch['Y']['input_ids'].reshape(-1)) )
+    y = reshape_n_edit(probs)
+    m = remove_pad_tokens(batch['Y']['input_ids'].reshape(-1))
+    if pll : loss_pll = cross_entropy_loss(y,m)
+    del probs
     if send_trfrmr_out :
         batch, a, b = swap(batch, batch['X']['input_ids'], trfrmr_out, pll)
     else :
-        batch, a, b = swap(batch, sr_embd, tr_embd, pll)
-    del probs
-    batch['X']['input_ids'] = (~(batch['X']['input_ids'].bool())).float()
-    if pll : batch['Y']['input_ids'] = (~(batch['Y']['input_ids'].bool())).float()
+        batch, a, b  = swap(batch, sr_embd, tr_embd, pll)
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
-    loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
-    del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, trfrmr_out, trfrmr_out_
+    y=reshape_n_edit(probs_)
+    m=remove_pad_tokens(a.reshape(-1))
+    loss_b2b = cross_entropy_loss(y, m) #since token_id is same as position in vocabulary
+    del probs_, sr_embd_, tr_embd_, trfrmr_out_,sr_embd,tr_embd,trfrmr_out
     if pll : loss = loss_pll + loss_b2b
     else : loss = loss_b2b
-    synchronize()
+    if torch.cuda.is_available() :
+        torch.cuda.synchronize()
     for optimizer in optimizers :
         optimizer.zero_grad()
     loss.backward()
@@ -160,17 +156,26 @@ for epoch in tqdm(range(num_epochs)) :
     losses = [[], []]
 
     for i, batch in enumerate(pll_train_loader) :
+        
         batch = send_to_gpu(batch, pll=True)
+        #print(type(batch['X']))
         batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
         losses[0].append(loss1.item())
         del loss1
-        synchronize()
+        if torch.cuda.is_available() :
+            torch.cuda.synchronize()
         #if epoch%20==0 : evaluate([model_ed,model_de], 1, beam_size=3)
+        batch['X']['attention_mask'] = (~(batch['X']['attention_mask'].bool())).float()
+        batch['Y']['attention_mask'] = (~(batch['Y']['attention_mask'].bool())).float()
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
         #if epoch%20==0 : evaluate([model_ed,model_de], 2, beam_size=3)
         losses[1].append(loss2.item())
         del loss2
-        synchronize()
+        if torch.cuda.is_available() :
+            torch.cuda.synchronize()
+        if i%100==0 and i!=0 :
+            print(sum(losses[0][-100:-1])/100, sum(losses[1][-100:-1])/100)
+
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
 
 #Training on monolingual data if the above losses are sufficiently low:
@@ -185,17 +190,16 @@ for epoch in tqdm(range(num_epochs)) :
 
         for i, batch in enumerate(mono_train_loader_en):
             batch = send_to_gpu(batch, pll=False)
+
             _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
-            losses[0].append(loss1.item())
-            del loss1
-            synchronize()
+
+            losses[0].append(loss1)
 
         for i, batch in enumerate(mono_train_loader_de):
-            
             batch = send_to_gpu(batch, pll=False)
-            _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
-            losses[1].append(loss2.item())
-            del loss2
-            synchronize()
 
+            _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
+
+            losses[1].append(loss2)
+        
         losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
