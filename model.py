@@ -75,7 +75,7 @@ class xlmb2b(torch.nn.Module):
             return indices
 
     def change_attn_for_xlm(self, dic) :
-        k=='attention_mask'
+        k='attention_mask'
         dic[k]=dic[k].bool()
         dic[k]=~dic[k]
         dic[k]=dic[k].float()
