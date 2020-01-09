@@ -29,8 +29,8 @@ d_model = 1024
 
 model_ed = xlmb2b().double().to(device)
 model_de = xlmb2b().double().to(device)
-model_ed.xlm = model_de.xlm
 del model_ed.xlm
+model_ed.xlm = model_de.xlm
 
 cpus = mp.cpu_count()
 pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)
@@ -109,7 +109,7 @@ def set_to_eval(model_lis, beam_size=3) :
 def send_to_gpu(batch, pll) :
     lis =['X', 'Y'] if pll else ['X']
     for elem in lis :
-        for key, value in batch[elem] :
+        for key, value in batch[elem].items() :
             batch[elem][key] = value.to(device, non_blocking=True)
 
 def evaluate(model, i, beam_size=3) :
@@ -165,9 +165,9 @@ for epoch in tqdm(range(num_epochs)) :
         losses[0].append(loss1.item())
         del loss1
         synchronize()
-        #if epoch%20==0 : evaluate([model_ed,model_de], 1, beam_size=3)
+        batch['X']['attention_mask'] = (~(batch['X']['attention_mask'].bool())).float()
+        batch['Y']['attention_mask'] = (~(batch['Y']['attention_mask'].bool())).float()
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
-        #if epoch%20==0 : evaluate([model_ed,model_de], 2, beam_size=3)
         losses[1].append(loss2.item())
         del loss2
         synchronize()
