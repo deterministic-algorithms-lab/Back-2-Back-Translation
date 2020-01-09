@@ -11,9 +11,9 @@ from nltk.translate.bleu_score import corpus_bleu
 import multiprocessing as mp
 
 if path.exists("../../data/file_1.csv"):
-	data_obj = load_data(load_ = False)
+    data_obj = load_data(load_ = False)
 else:
-	data_obj = load_data()
+    data_obj = load_data()
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 

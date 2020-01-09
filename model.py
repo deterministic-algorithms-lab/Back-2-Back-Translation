@@ -162,6 +162,6 @@ class xlmb2b(torch.nn.Module):
                         return torch.stack(self.probs).transpose(0,1), self.sr_embd, self.tr_embd, torch.stack(self.final_out).transpose(0,1)
                     else :
                         return self.choose()
-                self.tr_embd[ind,self.it_no,:] = self.embed_for_decoder(output_at_it_no, inp['langs'][:,self.it_no])		      #Adding next words embeddings to context for decoder
+                self.tr_embd[ind,self.it_no,:] = self.embed_for_decoder(output_at_it_no, inp['langs'][:,self.it_no])              #Adding next words embeddings to context for decoder
                 self.it_no+=1
                 self.tgt_mask = self.get_tgt_mask(self.tgt_mask, self.it_no)

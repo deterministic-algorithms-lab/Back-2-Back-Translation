@@ -29,7 +29,7 @@ class mono_datst(Dataset) :
         return len(self.df)
     def __getitem__(self,i) :
         z = self.df.loc[i,self.lang].shape[0]
-        return {'X' : {'input_ids' : self.df.loc[i,self.lang], 'langs' : tokenizer.lang2id[self.lang]],
+        return {'X' : {'input_ids' : self.df.loc[i,self.lang], 'langs' : tokenizer.lang2id[self.lang],
                   'position_ids' : torch.LongTensor([i for i in range(z)]) , 'lengths' : z } }
 
 pdv = tokenizer.pad_token_id
