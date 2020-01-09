@@ -33,7 +33,7 @@ class xlmb2b(torch.nn.Module):
             e = torch.tensor(x, dtype = np.float32).to(device)
             e[e!=e[it_no]] = -np.inf
             return e
-        return torch.tensor(x, dtype=np.float32).to(device)
+        return torch.tensor(x, dtype=torch.float32).to(device)
 
     def convert_mask_to_inf(mask):
         mask[mask==0] = -np.inf
