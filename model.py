@@ -36,7 +36,7 @@ class xlmb2b(torch.nn.Module):
         return torch.tensor(x, dtype=np.float32).to(device)
 
     def convert_mask_to_inf(mask):
-        mask[mask==1] = -np.inf
+        mask[mask==0] = -np.inf
         return mask
 
     def final_layer(self, trfrmr_out, mask) :
@@ -112,7 +112,7 @@ class xlmb2b(torch.nn.Module):
                                              tgt_key_padding_mask=~(out['attention_mask'].bool()),
                                              memory_key_padding_mask=~(inp['attention_mask'].bool()))
             trfrmr_out = trfrmr_out.transpose(0,1)
-            probs = self.apply_final_layer(trfrmr_out, ~(out['attention_mask'].bool()))
+            probs = self.apply_final_layer(trfrmr_out, out['attention_mask'].float())
 
             return probs, sr_embd, tr_embd, trfrmr_out
 
@@ -141,7 +141,7 @@ class xlmb2b(torch.nn.Module):
                                                  tgt_key_padding_mask=~(self.tgt_key_pad_mask.bool()),
                                                  memory_key_padding_mask=~(self.mem_key_pad_mask.bool()))
                 trfrmr_out = trfrmr_out.transpse(0,1)
-                trfrmr_out = self.apply_final_layer( trfrmr_out, ~(self.tgt_key_pad_mask.bool()) )
+                trfrmr_out = self.apply_final_layer( trfrmr_out, self.tgt_key_pad_mask.float() )
                 if self.beam_size==1 :
                     self.probs.append(trfrmr_out)
                 dic_indices = self.reform(trfrmr_out)

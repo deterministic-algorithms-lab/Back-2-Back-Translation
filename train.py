@@ -13,7 +13,7 @@ import multiprocessing as mp
 if path.exists("../../data/file_1.csv"):
     data_obj = load_data(load_ = False)
 else:
-    data_obj = load_data()
+    data_obj = load_data(paths = ['./train.en', './train.de'])
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -165,8 +165,6 @@ for epoch in tqdm(range(num_epochs)) :
         losses[0].append(loss1.item())
         del loss1
         synchronize()
-        batch['X']['attention_mask'] = (~(batch['X']['attention_mask'].bool())).float()
-        batch['Y']['attention_mask'] = (~(batch['Y']['attention_mask'].bool())).float()
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
         losses[1].append(loss2.item())
         del loss2
