@@ -16,6 +16,7 @@ class load_data():
         i = 0
         self.src_tokens = []
         self.trgt_tokens = []
+
         with open(self.src_lang_path, 'rt') as f:
           while(i!=self.pll_size):
             input_ids = torch.tensor(tokenizer.encode('<s><s>'+f.readline()+'</s>')[1:-1])
@@ -36,10 +37,12 @@ class load_data():
             df_eng = pd.DataFrame(self.src_tokens)
             df_de = pd.DataFrame(self.trgt_tokens)
             d = 0
+            '''
             for df in [df_prllel, df_eng, df_de]:
                 with open('../../data/file_'+str(d)+'.pkl', 'wb+') as f :
                     pickle.dump(df,f)
                 d = d+1
+            '''
         else:
             [df_prllel,df_en,df_de] = [None]*3
             d=0
@@ -47,4 +50,5 @@ class load_data():
                 with open('../../data/file_'+str(d)+'.pkl', 'rb') as f :
                     var = pickle.load(f)
                 d=d+1
+                
         return df_prllel, df_eng, df_de

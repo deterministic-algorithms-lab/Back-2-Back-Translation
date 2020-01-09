@@ -46,7 +46,7 @@ def coll(batch, pll_dat) :
         batch1['position_ids'] = torch.LongTensor([[i for i in range(max_size)]]*b_sz)
         batch1['langs'] = torch.LongTensor([ [batch[i][key]['langs']]*max_size for i in range(b_sz)])
         batch1['attention_mask'] = torch.stack([torch.cat([torch.zeros(batch[i][key]['lengths'], dtype=torch.float32),
-                                                                     torch.ones(batch1['lengths'].max()-batch[i][key]['lengths'], dtype=torch.float32)], dim=0)
+                                                                     torch.ones(max_size-batch[i][key]['lengths'], dtype=torch.float32)], dim=0)
                                                                      for i in range(b_sz)])
         batch2[key] = batch1
     return batch2
