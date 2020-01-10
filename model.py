@@ -18,7 +18,6 @@ class xlmb2b(torch.nn.Module):
         self.pll_data = pll_dat
         self.mx_tr_seq_len = 120
         self.end_tok = 1 #Token id of end token
-        self.softmax = nn.Softmax(dim=1)
         self.dic_tensor = torch.tensor([v for k,v in tokenizer.encoder.items()]) #tensor with i_th token's id at i_th position
         self.vocab_size = self.dic_tensor.shape[0]
         self.final_linear = nn.Linear(self.d_model, self.vocab_size)
@@ -26,6 +25,7 @@ class xlmb2b(torch.nn.Module):
         self.beam_size = 1
 
     def infs_to_zero(self,mask) :
+        mask[mask==0]=1
         mask[mask==-np.inf] = 0
         return mask
 
@@ -41,12 +41,14 @@ class xlmb2b(torch.nn.Module):
 
     def convert_mask_to_inf(self , mask):
         mask[mask==0] = -np.inf
+        mask[mask==1] = 0
         return mask
 
     def final_layer(self, trfrmr_out, mask) :
-        mask = self.convert_mask_to_inf(mask)
-        x = (trfrmr_out.transpose(2,1).transpose(1,0)+mask).transpose(0,1).transpose(1,2)
-        return self.softmax(self.final_linear(x).reshape(-1, self.vocab_size)).reshape(trfrmr_out.shape[0],-1,self.vocab_size)
+        #mask = self.convert_mask_to_inf(mask)
+        x = trfrmr_out[mask.bool()]
+        #x = (trfrmr_out.transpose(2,1).transpose(1,0)+mask).transpose(0,1).transpose(1,2)
+        return self.final_linear(x)
 
     def apply_final_layer(self, trfrmr_out, mask) :
         if self.it_no is not None :
@@ -117,7 +119,8 @@ class xlmb2b(torch.nn.Module):
                                              memory_key_padding_mask=~(inp['attention_mask'].bool()))
             trfrmr_out = trfrmr_out.transpose(0,1)
             probs = self.apply_final_layer(trfrmr_out, out['attention_mask'].float())
-            out['attention_mask'] = self.infs_to_zero(out['attention_mask'])
+            #out['attention_mask'] = self.infs_to_zero(out['attention_mask'])
+            out['attention_mask'] = out['attention_mask'].float()
             return probs, sr_embd, tr_embd, trfrmr_out
 
         else :
@@ -146,6 +149,7 @@ class xlmb2b(torch.nn.Module):
                                                  memory_key_padding_mask=~(self.mem_key_pad_mask.bool()))
                 trfrmr_out = trfrmr_out.transpse(0,1)
                 trfrmr_out = self.apply_final_layer( trfrmr_out, self.tgt_key_pad_mask.float() )
+                self.tgt_key_pad_mask = self.infs_to_zero(self.tgt_key_pad_mask)
                 if self.beam_size==1 :
                     self.probs.append(trfrmr_out)
                 dic_indices = self.reform(trfrmr_out)

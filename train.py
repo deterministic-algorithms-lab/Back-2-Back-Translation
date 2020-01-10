@@ -157,25 +157,30 @@ optimizers = [optimizer_de,optimizer_ed]
 thresh_for_xlm_weight_freeze = 0.7
 thresh_for_send_trfrmr_out = 0.9
 
+freeze_weights(model_de.xlm)
+
 for epoch in tqdm(range(num_epochs)) :
 
     print(epoch)
     model_ed.pll_dat=True
     model_de.pll_dat=True
     losses = [[], []]
-
     for i, batch in enumerate(pll_train_loader) :
         batch = send_to_gpu(batch, pll=True)
         batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
         losses[0].append(loss1.item())
         del loss1
         synchronize()
+        batch = flip_masks(batch)
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
         losses[1].append(loss2.item())
         del loss2
         synchronize()
+        if losses[0][-1]<thresh_for_xlm_weight_freeze and losses[1][-1]<thresh_for_xlm_weight_freeze :
+            unfreeze_weights(model_ed.xlm)
+        
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
-
+    
 #Training on monolingual data if the above losses are sufficiently low:
 
     if(losses_epochs['pll'][-1][0]<thresh_for_mono_data or losses['pll'][-1][1]<thresh_for_mono_data):
