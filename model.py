@@ -25,6 +25,10 @@ class xlmb2b(torch.nn.Module):
         self.it_no = None
         self.beam_size = 1
 
+    def infs_to_zero(self,mask) :
+        mask[mask!=mask] = 0
+        return mask
+
     def get_tgt_mask(self, tr_len, it_no=None) :
         x = np.zeros((tr_len,tr_len), dtype=np.float32)
         upp_indices = np.triu_indices(tr_len, k=1)
@@ -113,7 +117,7 @@ class xlmb2b(torch.nn.Module):
                                              memory_key_padding_mask=~(inp['attention_mask'].bool()))
             trfrmr_out = trfrmr_out.transpose(0,1)
             probs = self.apply_final_layer(trfrmr_out, out['attention_mask'].float())
-
+            out['attention_mask'] = self.infs_to_zero(out['attention_mask'])
             return probs, sr_embd, tr_embd, trfrmr_out
 
         else :
