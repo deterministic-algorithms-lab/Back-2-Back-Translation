@@ -26,7 +26,7 @@ class xlmb2b(torch.nn.Module):
         self.beam_size = 1
 
     def infs_to_zero(self,mask) :
-        mask[mask!=mask] = 0
+        mask[mask==-np.inf] = 0
         return mask
 
     def get_tgt_mask(self, tr_len, it_no=None) :

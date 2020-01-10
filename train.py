@@ -134,17 +134,16 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
         batch, a, b = swap(batch, batch['X']['input_ids'], trfrmr_out, pll)
     else :
         batch, a, b = swap(batch, sr_embd, tr_embd, pll)
-    del probs
     if send_trfrmr_out : batch = flip_masks(batch)
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
     loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
-    del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, trfrmr_out, trfrmr_out_
     if pll : loss = loss_pll + loss_b2b
     else : loss = loss_b2b
-    synchronize()
     for optimizer in optimizers :
         optimizer.zero_grad()
     loss.backward()
+    del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, trfrmr_out, trfrmr_out_, probs
+    synchronize()
     for optimizer in optimizers :
         optimizer.step()
     #batch = flip_masks(batch)
