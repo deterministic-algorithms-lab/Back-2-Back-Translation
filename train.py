@@ -89,6 +89,11 @@ def swap(batch,sr_embd,tr_embd,pll=True) :
                 batch1['X'][k]=v
     return batch, z, batch1
 
+def flip_masks(batch) :
+    batch['X']['attention_mask'] = (~(batch['X']['attention_mask'].bool())).float()
+    batch['Y']['attention_mask'] = (~(batch['Y']['attention_mask'].bool())).float()
+    return batch
+
 def freeze_weights(model) :
     for param in model.parameters() :
         param.requires_grad = False
@@ -111,6 +116,7 @@ def send_to_gpu(batch, pll) :
     for elem in lis :
         for key, value in batch[elem].items() :
             batch[elem][key] = value.to(device, non_blocking=True)
+    return batch
 
 def evaluate(model, i, beam_size=3) :
     set_to_eval(model,beam_size)
@@ -129,8 +135,7 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
     else :
         batch, a, b = swap(batch, sr_embd, tr_embd, pll)
     del probs
-    batch['X']['input_ids'] = (~(batch['X']['input_ids'].bool())).float()
-    if pll : batch['Y']['input_ids'] = (~(batch['Y']['input_ids'].bool())).float()
+    if send_trfrmr_out : batch = flip_masks(batch)
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
     loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
     del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, trfrmr_out, trfrmr_out_
@@ -142,6 +147,7 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
     loss.backward()
     for optimizer in optimizers :
         optimizer.step()
+    #batch = flip_masks(batch)
     return a,b,loss
 
 

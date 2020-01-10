@@ -105,7 +105,7 @@ class xlmb2b(torch.nn.Module):
                 sr_embd = inp['input_ids']
                 tr_embd = out['input_ids']
 
-            tr_len = out['lengths'].max()
+            tr_len = int(out['lengths'].max())
             tgt_mask = self.get_tgt_mask(tr_len)
             trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1),
                                              memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
