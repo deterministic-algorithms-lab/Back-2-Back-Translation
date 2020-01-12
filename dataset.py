@@ -32,8 +32,6 @@ class mono_datst(Dataset) :
         return {'X' : {'input_ids' : self.df.loc[i,self.lang], 'langs' : tokenizer.lang2id[self.lang],
                   'position_ids' : torch.LongTensor([i for i in range(z)]) , 'lengths' : z } }
 
-pdv = tokenizer.pad_token_id
-
 def coll(batch, pll_dat) :
     b_sz=len(batch)
     batch2 = {}

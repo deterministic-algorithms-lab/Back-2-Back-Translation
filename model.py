@@ -5,7 +5,7 @@ from preprocessing import tokenizer
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-batch_size = 32
+# batch_size = 1
 dic = tokenizer.decoder
 
 class xlmb2b(torch.nn.Module):
@@ -49,7 +49,6 @@ class xlmb2b(torch.nn.Module):
         x = trfrmr_out[mask.bool()]
         #x = (trfrmr_out.transpose(2,1).transpose(1,0)+mask).transpose(0,1).transpose(1,2)
         return self.final_linear(x)
-
     def apply_final_layer(self, trfrmr_out, mask) :
         if self.it_no is not None :
             trfrmr_out, mask = trfrmr_out[self.not_done_samples], self.tgt_key_pad_mask[self.not_done_samples]
@@ -113,15 +112,20 @@ class xlmb2b(torch.nn.Module):
 
             if not already_embed :
                 sr_embd = self.xlm(**self.change_attn_for_xlm(inp))[0]
-                tr_embd = self.xlm(**self.change_attn_for_xlm(out))[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
+                #print(sr_embd.shape)
+                tr_embd = self.xlm(**self.change_attn_for_xlm(out))[0]
+                #print(tr_embd.shape)                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
             else :
                 sr_embd = inp['input_ids']
                 tr_embd = out['input_ids']
 
             tr_len = int(out['lengths'].max())
             tgt_mask = self.get_tgt_mask(tr_len)
-            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1),
-                                             memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
+            # print("TGT KEY PAD MASK",out['attention_mask'].byte())
+            # print("MEM KEY PAD MASK", inp['attention_mask'].byte())            
+            # print("TGT:-", tr_embd, tr_embd.shape)
+            # print("MEMORY:-", sr_embd, sr_embd.shape)
+            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1), memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
                                              tgt_key_padding_mask=~(out['attention_mask'].bool()),
                                              memory_key_padding_mask=~(inp['attention_mask'].bool()))
             trfrmr_out = trfrmr_out.transpose(0,1)
@@ -156,7 +160,6 @@ class xlmb2b(torch.nn.Module):
                 trfrmr_out = trfrmr_out.transpose(0,1)
                 trfrmr_out = self.apply_final_layer( trfrmr_out, self.tgt_key_pad_mask.float() )
                 self.tgt_key_pad_mask = self.tgt_key_pad_mask.long()
-                #self.tgt_key_pad_mask = self.infs_to_zero(self.tgt_key_pad_mask)
                 if self.beam_size==1 :
                     self.probs.append(trfrmr_out)
                 dic_indices = self.reform(trfrmr_out)
@@ -180,4 +183,3 @@ class xlmb2b(torch.nn.Module):
                         return self.choose()
                 self.tr_embd[ind.reshape(-1),self.it_no+1,:] = self.embed_for_decoder(output_at_it_no, inp['langs'][:,self.it_no])           #Adding next words embeddings to context for decoder
                 self.it_no+=1
-                self.tgt_mask = self.get_tgt_mask(self.tgt_mask, self.it_no)
