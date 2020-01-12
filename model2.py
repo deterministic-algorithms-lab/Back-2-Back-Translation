@@ -100,7 +100,7 @@ class xlmb2b(torch.nn.Module):
         i = torch.tensor([i for i in range(y.shape[0])])
         final_out = torch.stack(self.final_out).transpose(0,1)
         final_out = final_out.reshape(self.beam_size,-1,final_out.shape[1])
-        return final_out[y,i,:]
+        return final_out[y.reshape(-1),i.reshape(-1),:]
 
     def calc_just_now_completed_samples_mask(self,ind) :
         self.just_now_completed_samples_mask[:,:] = False
