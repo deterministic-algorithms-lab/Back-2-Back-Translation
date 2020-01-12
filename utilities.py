@@ -1,4 +1,24 @@
 
+
+def cut_and_paste_down( batch, dim=1) :
+    return batch.transpose(0,1).reshape(-1)
+
+def cut_and_paste_up( batch, dim=1, beam_size) :
+        '''batch.size = [batch_size*beam_size, z]
+           return size = [batch_size,z*beam_size]'''
+    return batch.reshape(beam_size,-1,batch.shape[1]).transpose(0,1).reshape(-1,beam_size*batch.shape[1])
+
+def convert_mask_to_inf( mask):
+    mask[mask==0] = -np.inf
+    mask[mask==1] = 0
+    return mask
+
+
+def infs_to_zero(self,mask) :
+    mask[mask==0]=1
+    mask[mask==-np.inf] = 0
+    return mask
+
 class clone_batch() :
 
     def __init__(self, n, pll_dat=True) :
