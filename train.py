@@ -11,9 +11,9 @@ from nltk.translate.bleu_score import corpus_bleu
 import multiprocessing as mp
 
 if path.exists("../../data/file_1.csv"):
-	data_obj = load_data(load_ = False)
+    data_obj = load_data(load_ = False)
 else:
-	data_obj = load_data()
+    data_obj = load_data(paths = ['./train.en', './train.de'])
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -29,8 +29,9 @@ d_model = 1024
 
 model_ed = xlmb2b().double().to(device)
 model_de = xlmb2b().double().to(device)
-del model_de.xlm
-model_de.xlm = model_ed.xlm
+del model_ed.xlm
+model_ed.xlm = model_de.xlm
+
 
 
 cpus = 1 # mp.cpu_count()
@@ -86,6 +87,11 @@ def swap(batch,sr_embd,tr_embd,pll=True) :
 
     return batch, z['input_ids'], z
 
+def flip_masks(batch) :
+    batch['X']['attention_mask'] = (~(batch['X']['attention_mask'].bool())).float()
+    batch['Y']['attention_mask'] = (~(batch['Y']['attention_mask'].bool())).float()
+    return batch
+
 def freeze_weights(model) :
     for param in model.parameters() :
         param.requires_grad = False
@@ -126,24 +132,22 @@ def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=F
     del probs
     if send_trfrmr_out :
         batch, a, b = swap(batch, batch['X']['input_ids'], trfrmr_out, pll)
+        batch = flip_masks(batch)
     else :
-        batch, a, b  = swap(batch, sr_embd, tr_embd, pll)
-
-    if pll : batch['Y']['input_ids'] = (~(batch['Y']['input_ids'].bool())).float()
+        batch, a, b = swap(batch, sr_embd, tr_embd, pll)
+        
     probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
-    y=reshape_n_edit(probs_)
-    m=remove_pad_tokens(a.reshape(-1))
-    loss_b2b = cross_entropy_loss(y, m) #since token_id is same as position in vocabulary
-    del probs_, sr_embd_, tr_embd_, trfrmr_out_,sr_embd,tr_embd,trfrmr_out
+    loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
     if pll : loss = loss_pll + loss_b2b
     else : loss = loss_b2b
-    if torch.cuda.is_available() :
-        torch.cuda.synchronize()
     for optimizer in optimizers :
         optimizer.zero_grad()
     loss.backward()
+    del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, trfrmr_out, trfrmr_out_, probs
+    synchronize()
     for optimizer in optimizers :
         optimizer.step()
+    #batch = flip_masks(batch)
     return a,b,loss
 
 
@@ -154,13 +158,14 @@ optimizers = [optimizer_de,optimizer_ed]
 thresh_for_xlm_weight_freeze = 0.7
 thresh_for_send_trfrmr_out = 0.9
 
+freeze_weights(model_de.xlm)
+
 for epoch in tqdm(range(num_epochs)) :
 
     print(epoch)
     model_ed.pll_dat=True
     model_de.pll_dat=True
     losses = [[], []]
-
     for i, batch in enumerate(pll_train_loader) :
         
         batch = send_to_gpu(batch, pll=True)
@@ -168,22 +173,19 @@ for epoch in tqdm(range(num_epochs)) :
         batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
         losses[0].append(loss1.item())
         del loss1
-        if torch.cuda.is_available() :
-            torch.cuda.synchronize()
-        #if epoch%20==0 : evaluate([model_ed,model_de], 1, beam_size=3)
-        batch['X']['attention_mask'] = (~(batch['X']['attention_mask'].bool())).float()
-        batch['Y']['attention_mask'] = (~(batch['Y']['attention_mask'].bool())).float()
+        synchronize()
+        batch = flip_masks(batch)
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
-        #if epoch%20==0 : evaluate([model_ed,model_de], 2, beam_size=3)
         losses[1].append(loss2.item())
         del loss2
-        if torch.cuda.is_available() :
-            torch.cuda.synchronize()
+        synchronize()
+        if losses[0][-1]<thresh_for_xlm_weight_freeze and losses[1][-1]<thresh_for_xlm_weight_freeze :
+            unfreeze_weights(model_ed.xlm)
         if i%100==0 and i!=0 :
             print(sum(losses[0][-100:-1])/100, sum(losses[1][-100:-1])/100)
 
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
-
+    
 #Training on monolingual data if the above losses are sufficiently low:
 
     if(losses_epochs['pll'][-1][0]<thresh_for_mono_data or losses['pll'][-1][1]<thresh_for_mono_data):

@@ -38,14 +38,13 @@ def coll(batch, pll_dat) :
     l = ['X','Y'] if pll_dat else ['X']
     for key in l :
         batch1 = {}
-        batch1['input_ids'] = padd([batch[i][key]['input_ids'] for i in range(b_sz)], batch_first=True, padding_value=2)
+        batch1['input_ids'] = padd([batch[i][key]['input_ids'] for i in range(b_sz)], batch_first=True, padding_value=pdv)
         batch1['lengths'] = torch.LongTensor([batch[i][key]['lengths'] for i in range(b_sz)])
         max_size = int(batch1['lengths'].max())
+        batch1['position_ids'] = torch.LongTensor([[i for i in range(max_size)]]*b_sz)
         batch1['langs'] = torch.LongTensor([ [batch[i][key]['langs']]*max_size for i in range(b_sz)])
-        batch1['position_ids'] = torch.LongTensor([ [i for i in range(max_size)] ]*b_sz)
-        
-        batch1['attention_mask'] = torch.stack([torch.cat([torch.zeros(batch[i][key]['lengths'],dtype=torch.float32),
-                                                                     torch.ones(batch1['lengths'].max()-batch[i][key]['lengths'],dtype=torch.float32)], dim=0)
+        batch1['attention_mask'] = torch.stack([torch.cat([torch.zeros(batch[i][key]['lengths'], dtype=torch.float32),
+                                                                     torch.ones(max_size-batch[i][key]['lengths'], dtype=torch.float32)], dim=0)
                                                                      for i in range(b_sz)])
         batch2[key] = batch1
     return batch2

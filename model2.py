@@ -5,7 +5,7 @@ from preprocessing import tokenizer
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-# batch_size = 1
+batch_size = 32
 dic = tokenizer.decoder
 
 class xlmb2b(torch.nn.Module):
@@ -24,10 +24,6 @@ class xlmb2b(torch.nn.Module):
         self.it_no = None
         self.beam_size = 1
 
-    def infs_to_zero(self,mask) :
-        mask[mask==0]=1
-        mask[mask==-np.inf] = 0
-        return mask
 
     def get_tgt_mask(self, tr_len, it_no=None) :
         x = np.zeros((tr_len,tr_len), dtype=np.float32)
@@ -39,20 +35,25 @@ class xlmb2b(torch.nn.Module):
             return e
         return torch.tensor(x, dtype=torch.float32).to(device)
 
-    def convert_mask_to_inf(self , mask):
-        mask[mask==0] = -np.inf
-        mask[mask==1] = 0
-        return mask
-
+    
     def final_layer(self, trfrmr_out, mask) :
-        #mask = self.convert_mask_to_inf(mask)
         x = trfrmr_out[mask.bool()]
-        #x = (trfrmr_out.transpose(2,1).transpose(1,0)+mask).transpose(0,1).transpose(1,2)
-        return self.final_linear(x)
+        if self.it_no is not None :
+            return self.final_linear(x), mask
+        else :
+            return self.final_linear(x)
+    
+    def mask_fr_mask(self) :
+        m = torch.zeros((self.bs,self.max_tr_seq_len),dtype=torch.bool)
+        m[:,self.it_no+1]=1
+        m[~self.not_done_samples] = 0
+        return m
+    
     def apply_final_layer(self, trfrmr_out, mask) :
         if self.it_no is not None :
-            trfrmr_out, mask = trfrmr_out[self.not_done_samples], self.tgt_key_pad_mask[self.not_done_samples]
-            mask[:,self.it_no] = 1
+            mask_ = self.tgt_key_pad_mask[self.not_done_samples][:,self.it_no].bool()
+            mask = torch.zeros((self.bs,self.max_tr_seq_len), dtype=torch.bool)
+            mask[self.mask_fr_mask()] = mask_
         return self.final_layer(trfrmr_out, mask)
 
     def embed_for_decoder(self, output_at_it_no, lang_long_tensor) :
@@ -60,28 +61,25 @@ class xlmb2b(torch.nn.Module):
         z = y + self.xlm.position_embeddings(self.it_no).expand_as(y)
         return z+self.xlm.lang_embeddings(lang_id)
 
-    def cut_and_paste_down(self, batch, dim=1) :
-        return batch.transpose(0,1).reshape(-1)
-
-    def cut_and_paste_up(self, batch, dim=1) :
-        '''batch.size = [batch_size*beam_size, z]
-           return size = [batch_size,z*beam_size]'''
-        return batch.reshape(self.beam_size,-1,batch.shape[1]).transpose(0,1).reshape(-1,self.beam_size*batch.shape[1])
     def indi(self) :
         y = self.not_done_samples.long()
         quotients = torch.div(y,self.beam_size)
         rems = torch.remainder(y,self.beam_size)
         return quotients,rems
     
+    def get_msk_fr_prev_probs_entry(self) :
+        x = torch.zeros((self.actual_bs, self.max_tr_seq_len+1, self.beam_size), dtype=torch.bool)
+        x[:,self.it_no,:] = self.not_done_samples.reshape(-1,self.beam_size)
+        return x
+
     def reform(self, trfrmr_out) :
-        if self.beam_size == 1 :
-            return trfrmr_out[self.not_done_samples,self.it_no,:].max(2)[1]
         prev_probs_here = self.prev_probs[:,self.it_no-1,:] if self.it_no!=0 else torch.zeros((self.actual_bs, self.beam_size))
-        m = (trfrmr_out[self.not_done_samples].t()+self.prev_probs_here.reshape(-1)[self.not_done_samples]).t()
+        m = (trfrmr_out.t()+self.prev_probs_here.reshape(-1)).t()
+        m[~self.not_done_samples] = 0
         m = m.reshape(-1,self.beam_size*self.vocab_size)
-        ind1, ind2 = self.indi()
+        msk_fr_prev_probs_entry = self.get_msk_fr_prev_probs_entry()
         value, indices = m.topk(self.beam_size, dim=1)
-        self.prev_probs[ind1,self.it_no,ind2]=values.reshape(-1)
+        self.prev_probs[msk_fr_prev_probs_entry]=value.reshape(-1)[self.not_done_samples]
         indices = torch.remainder(indices, self.vocab_size)
         indices = indices.reshape(-1)
         return indices
@@ -102,7 +100,12 @@ class xlmb2b(torch.nn.Module):
         i = torch.tensor([i for i in range(y.shape[0])])
         final_out = torch.stack(self.final_out).transpose(0,1)
         final_out = final_out.reshape(self.beam_size,-1,final_out.shape[1])
-        return final_out[y,i,:]
+        return final_out[y.reshape(-1),i.reshape(-1),:]
+
+    def calc_just_now_completed_samples_mask(self,ind) :
+        self.just_now_completed_samples_mask[:,:] = False
+        self.just_now_completed_samples_mask[self.not_done_samples==True] = ~ind
+        self.not_done_samples[self.not_done_samples==True] = ind
 
     def forward(self, dat, already_embed = False) :                             #dat is a dictionary with keys==keyword args of xlm
 
@@ -112,20 +115,15 @@ class xlmb2b(torch.nn.Module):
 
             if not already_embed :
                 sr_embd = self.xlm(**self.change_attn_for_xlm(inp))[0]
-                #print(sr_embd.shape)
-                tr_embd = self.xlm(**self.change_attn_for_xlm(out))[0]
-                #print(tr_embd.shape)                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
+                tr_embd = self.xlm(**self.change_attn_for_xlm(out))[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
             else :
                 sr_embd = inp['input_ids']
                 tr_embd = out['input_ids']
 
             tr_len = int(out['lengths'].max())
             tgt_mask = self.get_tgt_mask(tr_len)
-            # print("TGT KEY PAD MASK",out['attention_mask'].byte())
-            # print("MEM KEY PAD MASK", inp['attention_mask'].byte())            
-            # print("TGT:-", tr_embd, tr_embd.shape)
-            # print("MEMORY:-", sr_embd, sr_embd.shape)
-            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1), memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
+            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1),
+                                             memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
                                              tgt_key_padding_mask=~(out['attention_mask'].bool()),
                                              memory_key_padding_mask=~(inp['attention_mask'].bool()))
             trfrmr_out = trfrmr_out.transpose(0,1)
@@ -143,43 +141,49 @@ class xlmb2b(torch.nn.Module):
             self.mem_key_pad_mask = inp['attention_mask'].repeat_interleave(self.beam_size,0)
             self.tgt_mask = self.get_tgt_mask(self.max_tr_seq_len,0)
             self.tr_embd = torch.zeros((self.bs, self.max_tr_seq_len, self.d_model))
-            self.not_done_samples = torch.tensor([i for i in range(self.bs)])
+            self.not_done_samples = torch.ones(self.bs, dtype=torch.bool)
             self.it_no = 0                                                           #if nth word of target sequence is being predicted,
             self.final_out = []                                                      #then iteration number(it_no) == n-1
             self.lengs = torch.zeros((self.bs))
             self.actual_bs = int(self.bs/self.beam_size)
             self.prev_probs = torch.zeros((self.actual_bs,self.max_tr_seq_len+1,self.beam_size))
-            self.probs = []
+            self.tgt_key_pad_mask[:,self.it_no] = torch.ones((self.bs))
+            self.just_now_completed_samples_mask = torch.zeros((self.bs), dtype=torch.bool)
+            self.seq_len_sr = inp['lengths'].max()
 
             while True :
-                self.tgt_key_pad_mask[:,self.it_no] = torch.ones((self.bs))
+
                 trfrmr_out = self.trnsfrmr_dcodr(tgt=self.tr_embd.transpose(0,1),
                                                  memory=self.sr_embd.transpose(0,1), tgt_mask=tgt_mask,
                                                  tgt_key_padding_mask=~(self.tgt_key_pad_mask.bool()),
                                                  memory_key_padding_mask=~(self.mem_key_pad_mask.bool()))
                 trfrmr_out = trfrmr_out.transpose(0,1)
-                trfrmr_out = self.apply_final_layer( trfrmr_out, self.tgt_key_pad_mask.float() )
+                val, masky = self.apply_final_layer( trfrmr_out, self.tgt_key_pad_mask.float() )
+                trfrmr_out = torch.zeros((self.bs,self.vocab_size))
+                trfrmr_out[masky[:,self.it_no+1].bool()] = val
                 self.tgt_key_pad_mask = self.tgt_key_pad_mask.long()
-                if self.beam_size==1 :
-                    self.probs.append(trfrmr_out)
                 dic_indices = self.reform(trfrmr_out)
+                dic_indices[~self.not_done_samples] = tokenizer.pad_token_id
                 output_at_it_no = torch.zeros((self.bs,1)).long()
-                output_at_it_no[self.not_done_samples] = self.dic_tensor[dic_indices].reshape(-1,1)
+                output_at_it_no[self.not_done_samples] = self.dic_tensor[dic_indices].reshape(-1,1)[self.not_done_samples]
                 self.final_out.append(output_at_it_no)
+                self.tr_embd[self.not_done_samples,self.it_no+1,:] = self.embed_for_decoder(output_at_it_no[self.not_done_samples], inp['langs'][:,self.it_no])           #Adding next words embeddings to context for decoder
+                
                 ind = output_at_it_no[self.not_done_samples]!=self.end_tok
                 ind=ind.reshape(-1)
-                new_done_samples_len = self.not_done_samples.shape[0]-(ind==True).sum()
+                new_done_samples_len = (self.not_done_samples==True).sum()-(ind==True).sum()
+                
                 if new_done_samples_len!=0 :
-                    self.lengs[~ind] = it_no+1
-                    self.mem_key_pad_mask[~ind] = torch.zeros((new_done_samples_len, inp['lengths'].max())).long()
-                    self.tgt_key_pad_mask[~ind] = torch.zeros((new_done_samples_len, self.max_tr_seq_len)).long()
-                    self.not_done_samples = self.not_done_samples[ind]
-                self.tgt_key_pad_mask[ind,self.it_no+1] = ind.reshape((ind==True).sum()).long()
-                if self.not_done_samples.shape[0]==0 or self.it_no==self.max_tr_seq_len-1:
+                    self.calc_just_now_completed_samples_mask(ind)
+                    self.lengs[self.just_now_completed_samples_mask] = it_no+1
+                    self.mem_key_pad_mask[self.just_now_completed_samples_mask] = 0 #torch.zeros((new_done_samples_len, self.seq_len_sr)).long()
+                    self.tgt_key_pad_mask[self.just_now_completed_samples_mask] = 0 #torch.zeros((new_done_samples_len, self.max_tr_seq_len)).long()
+                
+                self.tgt_key_pad_mask[self.mask_fr_mask()] = 1
+                
+                if self.not_done_samples.sum()==0 or self.it_no==self.max_tr_seq_len-1:
                     self.it_no = None
-                    if self.beam_size==1 :
-                        return torch.stack(self.probs).transpose(0,1), self.sr_embd, self.tr_embd, torch.stack(self.final_out).transpose(0,1)
-                    else :
-                        return self.choose()
-                self.tr_embd[ind.reshape(-1),self.it_no+1,:] = self.embed_for_decoder(output_at_it_no, inp['langs'][:,self.it_no])           #Adding next words embeddings to context for decoder
+                    return self.choose()
+                
                 self.it_no+=1
+                self.tgt_mask = self.get_tgt_mask(self.tgt_mask, self.it_no)
