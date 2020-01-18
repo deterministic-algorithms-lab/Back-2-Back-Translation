@@ -54,11 +54,10 @@ class xlmb2b(nn.Module, model_utils):
             trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1),
                                              memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
                                              tgt_key_padding_mask=~(out['attention_mask'].bool()),
-                                             memory_key_padding_mask=~(inp['attention_mask'].bool()))
-            trfrmr_out = trfrmr_out.transpose(0,1)
+                                             memory_key_padding_mask=~(inp['attention_mask'].bool())).transpose(0,1)
             probs = self.apply_final_layer(trfrmr_out, out['attention_mask'].float())
             out['attention_mask'] = out['attention_mask'].float()
-            return probs, sr_embd, tr_embd, trfrmr_out
+            return probs, sr_embd, tr_embd
 
         else :
 

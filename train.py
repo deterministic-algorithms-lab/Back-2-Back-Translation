@@ -127,26 +127,21 @@ def synchronize() :
     if torch.cuda.is_available() :
         torch.cuda.synchronize()
 
-def run(model_forward,model_backward,batch,optimizers,pll=True,send_trfrmr_out=False):
-    probs, sr_embd, tr_embd, trfrmr_out = model_forward(batch)
+def run(model_forward,model_backward,batch,optimizers,pll=True):
+    probs, sr_embd, tr_embd = model_forward(batch)
     if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), remove_pad_tokens(batch['Y']['input_ids'].reshape(-1)) )
-    if send_trfrmr_out :
-        batch, a, b = swap(batch, batch['X']['input_ids'], trfrmr_out, pll)
-    else :
-        batch, a, b = swap(batch, sr_embd, tr_embd, pll)
-    if send_trfrmr_out : batch = flip_masks(batch)
-    probs_, sr_embd_, tr_embd_, trfrmr_out_ = model_backward(batch, not send_trfrmr_out)
+    batch, a, b = swap(batch, sr_embd, tr_embd, pll)
+    probs_, sr_embd_, tr_embd_ = model_backward(batch, True)
     loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
     if pll : loss = loss_pll + loss_b2b
     else : loss = loss_b2b
     for optimizer in optimizers :
         optimizer.zero_grad()
     loss.backward()
-    del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, trfrmr_out, trfrmr_out_, probs
+    del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, probs
     synchronize()
     for optimizer in optimizers :
         optimizer.step()
-    #batch = flip_masks(batch)
     return a,b,loss
 
 
@@ -155,7 +150,6 @@ thresh_for_mono_data = 0.5
 losses_epochs = {"pll" : [], "mono": []}
 optimizers = [optimizer_de,optimizer_ed]
 thresh_for_xlm_weight_freeze = 0.7
-thresh_for_send_trfrmr_out = 0.9
 
 freeze_weights(model_de.xlm)
 
