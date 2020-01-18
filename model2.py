@@ -24,6 +24,8 @@ class xlmb2b(nn.Module, model_utils):
         self.final_linear = nn.Linear(self.d_model, self.vocab_size)
         self.it_no = None
         self.beam_size = 1
+        self.k = 1
+        self.m = 1
     
     def choose(self) :
         '''Chooses final output beam for each sample using beam_size,
@@ -36,6 +38,11 @@ class xlmb2b(nn.Module, model_utils):
         final_out = final_out.reshape(self.beam_size,-1,final_out.shape[1])
         return final_out[y.reshape(-1),i.reshape(-1),:]
 
+    def get_prgrsiv_embdngs(self, dic) :
+        xlm_encoding = self.xlm(**self.change_attn_for_xlm(dic))[0]
+        plt_embdng = self.plt_embed(dic['input_ids'],dic['langs'], dic['position_ids'])
+        return self.m*xlm_encoding+(1-self.m)*plt_embdng
+
     def forward(self, dat, already_embed = False) :                             #dat is a dictionary with keys==keyword args of xlm
 
         if self.pll_data :
@@ -43,21 +50,22 @@ class xlmb2b(nn.Module, model_utils):
             out = dat['Y']
 
             if not already_embed :
-                sr_embd = self.xlm(**self.change_attn_for_xlm(inp))[0]
+                sr_embd =  self.xlm(**self.change_attn_for_xlm(inp))[0]
                 tr_embd = self.xlm(**self.change_attn_for_xlm(out))[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
+                prgrsiv_sr_embd = self.get_prgrsiv_embdngs(inp)
+                prgrsiv_tr_embd = self.get_prgrsiv_embdngs(out)
             else :
                 sr_embd = inp['input_ids']
-                tr_embd = out['input_ids']
-
+                prgrsiv_tr_embd = out['input_ids']
             tr_len = int(out['lengths'].max())
             tgt_mask = self.get_tgt_mask(tr_len)
-            trfrmr_out = self.trnsfrmr_dcodr(tgt=tr_embd.transpose(0,1),
+            trfrmr_out = self.trnsfrmr_dcodr(tgt=prgrsiv_tr_embd.transpose(0,1),
                                              memory=sr_embd.transpose(0,1), tgt_mask=tgt_mask,
                                              tgt_key_padding_mask=~(out['attention_mask'].bool()),
                                              memory_key_padding_mask=~(inp['attention_mask'].bool())).transpose(0,1)
             probs = self.apply_final_layer(trfrmr_out, out['attention_mask'].float())
             out['attention_mask'] = out['attention_mask'].float()
-            return probs, sr_embd, tr_embd
+            return probs, prgrsiv_sr_embd, tr_embd
 
         else :
 

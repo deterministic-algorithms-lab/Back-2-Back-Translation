@@ -54,10 +54,15 @@ class model_utils(ABC) :
             mask[self.mask_fr_mask()] = mask_
         return self.final_layer(trfrmr_out, mask)
 
-    def embed_for_decoder(self, output_at_it_no, lang_long_tensor) :
+    def plt_embed(self, tokens, langs, positions) :
         y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
-        z = y + self.xlm.position_embeddings(self.it_no).expand_as(y)
-        return z+self.xlm.lang_embeddings(lang_id)
+        z = y + self.xlm.position_embeddings(positions)
+        return (z.transpose(0,1)+self.xlm.lang_embeddings(lang_id)).transpose(0,1)
+    
+    def embed_for_decoder(self, output_at_it_no, lang_id) :
+        y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
+        z = y + self.xlm.position_embeddings(self.it_no)
+        return (z+self.xlm.lang_embeddings(lang_id))
 
     def indi(self) :
         y = self.not_done_samples.long()
