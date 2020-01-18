@@ -3,12 +3,13 @@ import torch
 import torch.nn as nn
 from preprocessing import tokenizer
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
+from utilities import model_utils
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 batch_size = 32
 dic = tokenizer.decoder
 
-class xlmb2b(torch.nn.Module):
+class xlmb2b(nn.Module, model_utils):
     def __init__(self, dic = dic, d_model=1024, trfrmr_nlayers=4, pll_dat=True) :
         super().__init__()
         self.xlm = XLMModel.from_pretrained('xlm-mlm-ende-1024')
@@ -23,74 +24,7 @@ class xlmb2b(torch.nn.Module):
         self.final_linear = nn.Linear(self.d_model, self.vocab_size)
         self.it_no = None
         self.beam_size = 1
-
-
-    def get_tgt_mask(self, tr_len, it_no=None) :
-        x = np.zeros((tr_len,tr_len), dtype=np.float32)
-        upp_indices = np.triu_indices(tr_len, k=1)
-        x[upp_indices] = -np.inf
-        if it_no is not None :
-            e = torch.tensor(x, dtype = torch.float32).to(device)
-            e[e!=e[it_no]] = -np.inf
-            return e
-        return torch.tensor(x, dtype=torch.float32).to(device)
-
     
-    def final_layer(self, trfrmr_out, mask) :
-        x = trfrmr_out[mask.bool()]
-        if self.it_no is not None :
-            return self.final_linear(x), mask
-        else :
-            return self.final_linear(x)
-    
-    def mask_fr_mask(self) :
-        m = torch.zeros((self.bs,self.max_tr_seq_len),dtype=torch.bool)
-        m[:,self.it_no+1]=1
-        m[~self.not_done_samples] = 0
-        return m
-    
-    def apply_final_layer(self, trfrmr_out, mask) :
-        if self.it_no is not None :
-            mask_ = self.tgt_key_pad_mask[self.not_done_samples][:,self.it_no].bool()
-            mask = torch.zeros((self.bs,self.max_tr_seq_len), dtype=torch.bool)
-            mask[self.mask_fr_mask()] = mask_
-        return self.final_layer(trfrmr_out, mask)
-
-    def embed_for_decoder(self, output_at_it_no, lang_long_tensor) :
-        y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
-        z = y + self.xlm.position_embeddings(self.it_no).expand_as(y)
-        return z+self.xlm.lang_embeddings(lang_id)
-
-    def indi(self) :
-        y = self.not_done_samples.long()
-        quotients = torch.div(y,self.beam_size)
-        rems = torch.remainder(y,self.beam_size)
-        return quotients,rems
-    
-    def get_msk_fr_prev_probs_entry(self) :
-        x = torch.zeros((self.actual_bs, self.max_tr_seq_len+1, self.beam_size), dtype=torch.bool)
-        x[:,self.it_no,:] = self.not_done_samples.reshape(-1,self.beam_size)
-        return x
-
-    def reform(self, trfrmr_out) :
-        prev_probs_here = self.prev_probs[:,self.it_no-1,:] if self.it_no!=0 else torch.zeros((self.actual_bs, self.beam_size))
-        m = (trfrmr_out.t()+self.prev_probs_here.reshape(-1)).t()
-        m[~self.not_done_samples] = 0
-        m = m.reshape(-1,self.beam_size*self.vocab_size)
-        msk_fr_prev_probs_entry = self.get_msk_fr_prev_probs_entry()
-        value, indices = m.topk(self.beam_size, dim=1)
-        self.prev_probs[msk_fr_prev_probs_entry]=value.reshape(-1)[self.not_done_samples]
-        indices = torch.remainder(indices, self.vocab_size)
-        indices = indices.reshape(-1)
-        return indices
-
-    def change_attn_for_xlm(self, dic) :
-        k='attention_mask'
-        dic[k]=dic[k].bool()
-        dic[k]=~dic[k]
-        dic[k]=dic[k].float()
-        return dic
-
     def choose(self) :
         '''Chooses final output beam for each sample using beam_size,
            final_out,prev_probs'''
@@ -101,11 +35,6 @@ class xlmb2b(torch.nn.Module):
         final_out = torch.stack(self.final_out).transpose(0,1)
         final_out = final_out.reshape(self.beam_size,-1,final_out.shape[1])
         return final_out[y.reshape(-1),i.reshape(-1),:]
-
-    def calc_just_now_completed_samples_mask(self,ind) :
-        self.just_now_completed_samples_mask[:,:] = False
-        self.just_now_completed_samples_mask[self.not_done_samples==True] = ~ind
-        self.not_done_samples[self.not_done_samples==True] = ind
 
     def forward(self, dat, already_embed = False) :                             #dat is a dictionary with keys==keyword args of xlm
 
@@ -128,7 +57,6 @@ class xlmb2b(torch.nn.Module):
                                              memory_key_padding_mask=~(inp['attention_mask'].bool()))
             trfrmr_out = trfrmr_out.transpose(0,1)
             probs = self.apply_final_layer(trfrmr_out, out['attention_mask'].float())
-            #out['attention_mask'] = self.infs_to_zero(out['attention_mask'])
             out['attention_mask'] = out['attention_mask'].float()
             return probs, sr_embd, tr_embd, trfrmr_out
 
@@ -156,8 +84,8 @@ class xlmb2b(torch.nn.Module):
                 trfrmr_out = self.trnsfrmr_dcodr(tgt=self.tr_embd.transpose(0,1),
                                                  memory=self.sr_embd.transpose(0,1), tgt_mask=tgt_mask,
                                                  tgt_key_padding_mask=~(self.tgt_key_pad_mask.bool()),
-                                                 memory_key_padding_mask=~(self.mem_key_pad_mask.bool()))
-                trfrmr_out = trfrmr_out.transpose(0,1)
+                                                 memory_key_padding_mask=~(self.mem_key_pad_mask.bool())).transpose(0,1)
+                
                 val, masky = self.apply_final_layer( trfrmr_out, self.tgt_key_pad_mask.float() )
                 trfrmr_out = torch.zeros((self.bs,self.vocab_size))
                 trfrmr_out[masky[:,self.it_no+1].bool()] = val
