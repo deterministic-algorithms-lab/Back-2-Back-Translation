@@ -1,23 +1,100 @@
+from abc import ABC
+class model_utils(ABC) :
+    
+    def __init__(self) :
+        super().__init__()
+    
+    def cut_and_paste_down( batch, dim=1) :
+        return batch.transpose(0,1).reshape(-1)
+
+    def cut_and_paste_up( batch, dim=1, beam_size) :
+            '''batch.size = [batch_size*beam_size, z]
+               return size = [batch_size,z*beam_size]'''
+        return batch.reshape(beam_size,-1,batch.shape[1]).transpose(0,1).reshape(-1,beam_size*batch.shape[1])
+
+    def convert_mask_to_inf( mask):
+        mask[mask==0] = -np.inf
+        mask[mask==1] = 0
+        return mask
 
 
-def cut_and_paste_down( batch, dim=1) :
-    return batch.transpose(0,1).reshape(-1)
+    def infs_to_zero(self,mask) :
+        mask[mask==0]=1
+        mask[mask==-np.inf] = 0
+        return mask
 
-def cut_and_paste_up( batch, dim=1, beam_size) :
-        '''batch.size = [batch_size*beam_size, z]
-           return size = [batch_size,z*beam_size]'''
-    return batch.reshape(beam_size,-1,batch.shape[1]).transpose(0,1).reshape(-1,beam_size*batch.shape[1])
+    def get_tgt_mask(self, tr_len, it_no=None) :
+        x = np.zeros((tr_len,tr_len), dtype=np.float32)
+        upp_indices = np.triu_indices(tr_len, k=1)
+        x[upp_indices] = -np.inf
+        if it_no is not None :
+            e = torch.tensor(x, dtype = torch.float32).to(device)
+            e[e!=e[it_no]] = -np.inf
+            return e
+        return torch.tensor(x, dtype=torch.float32).to(device)
 
-def convert_mask_to_inf( mask):
-    mask[mask==0] = -np.inf
-    mask[mask==1] = 0
-    return mask
+    
+    def final_layer(self, trfrmr_out, mask) :
+        x = trfrmr_out[mask.bool()]
+        if self.it_no is not None :
+            return self.final_linear(x), mask
+        else :
+            return self.final_linear(x)
+    
+    def mask_fr_mask(self) :
+        m = torch.zeros((self.bs,self.max_tr_seq_len),dtype=torch.bool)
+        m[:,self.it_no+1]=1
+        m[~self.not_done_samples] = 0
+        return m
+    
+    def apply_final_layer(self, trfrmr_out, mask) :
+        if self.it_no is not None :
+            mask_ = self.tgt_key_pad_mask[self.not_done_samples][:,self.it_no].bool()
+            mask = torch.zeros((self.bs,self.max_tr_seq_len), dtype=torch.bool)
+            mask[self.mask_fr_mask()] = mask_
+        return self.final_layer(trfrmr_out, mask)
+
+    def embed_for_decoder(self, output_at_it_no, lang_long_tensor) :
+        y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
+        z = y + self.xlm.position_embeddings(self.it_no).expand_as(y)
+        return z+self.xlm.lang_embeddings(lang_id)
+
+    def indi(self) :
+        y = self.not_done_samples.long()
+        quotients = torch.div(y,self.beam_size)
+        rems = torch.remainder(y,self.beam_size)
+        return quotients,rems
+    
+    def get_msk_fr_prev_probs_entry(self) :
+        x = torch.zeros((self.actual_bs, self.max_tr_seq_len+1, self.beam_size), dtype=torch.bool)
+        x[:,self.it_no,:] = self.not_done_samples.reshape(-1,self.beam_size)
+        return x
+
+    def reform(self, trfrmr_out) :
+        prev_probs_here = self.prev_probs[:,self.it_no-1,:] if self.it_no!=0 else torch.zeros((self.actual_bs, self.beam_size))
+        m = (trfrmr_out.t()+self.prev_probs_here.reshape(-1)).t()
+        m[~self.not_done_samples] = 0
+        m = m.reshape(-1,self.beam_size*self.vocab_size)
+        msk_fr_prev_probs_entry = self.get_msk_fr_prev_probs_entry()
+        value, indices = m.topk(self.beam_size, dim=1)
+        self.prev_probs[msk_fr_prev_probs_entry]=value.reshape(-1)[self.not_done_samples]
+        indices = torch.remainder(indices, self.vocab_size)
+        indices = indices.reshape(-1)
+        return indices
+
+    def change_attn_for_xlm(self, dic) :
+        k='attention_mask'
+        dic[k]=dic[k].bool()
+        dic[k]=~dic[k]
+        dic[k]=dic[k].float()
+        return dic
+
+    def calc_just_now_completed_samples_mask(self,ind) :
+        self.just_now_completed_samples_mask[:,:] = False
+        self.just_now_completed_samples_mask[self.not_done_samples==True] = ~ind
+        self.not_done_samples[self.not_done_samples==True] = ind
 
 
-def infs_to_zero(self,mask) :
-    mask[mask==0]=1
-    mask[mask==-np.inf] = 0
-    return mask
 
 class clone_batch() :
 
