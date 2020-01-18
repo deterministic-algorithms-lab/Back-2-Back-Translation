@@ -75,7 +75,7 @@ class xlmb2b(nn.Module, model_utils):
             self.tgt_key_pad_mask = torch.zeros((self.bs, self.max_tr_seq_len))
             self.mem_key_pad_mask = inp['attention_mask'].repeat_interleave(self.beam_size,0)
             self.tgt_mask = self.get_tgt_mask(self.max_tr_seq_len,0)
-            self.tr_embd = torch.zeros((self.bs, self.max_tr_seq_len, self.d_model))
+            self.tr_embd = torch.zeros((self.bs, self.max_tr_seq_len, self.d_model),dtype=torch.float64)
             self.not_done_samples = torch.ones(self.bs, dtype=torch.bool)
             self.it_no = 0                                                           #if nth word of target sequence is being predicted,
             self.final_out = []                                                      #then iteration number(it_no) == n-1
