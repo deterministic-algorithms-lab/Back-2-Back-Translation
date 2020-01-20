@@ -28,10 +28,10 @@ class model_utils(ABC) :
         upp_indices = np.triu_indices(tr_len, k=1)
         x[upp_indices] = -np.inf
         if it_no is not None :
-            e = torch.tensor(x, dtype = torch.float32).to(device)
+            e = torch.tensor(x, dtype = torch.float32, device=device)
             e[e!=e[it_no]] = -np.inf
             return e
-        return torch.tensor(x, dtype=torch.float32).to(device)
+        return torch.tensor(x, dtype=torch.float32, device=device)
 
     
     def final_layer(self, trfrmr_out, mask) :
@@ -42,7 +42,7 @@ class model_utils(ABC) :
             return self.final_linear(x)
     
     def mask_fr_mask(self) :
-        m = torch.zeros((self.bs,self.max_tr_seq_len),dtype=torch.bool)
+        m = torch.zeros((self.bs,self.max_tr_seq_len),dtype=torch.bool, device=device)
         m[:,self.it_no+1]=1
         m[~self.not_done_samples] = 0
         return m
@@ -50,7 +50,7 @@ class model_utils(ABC) :
     def apply_final_layer(self, trfrmr_out, mask) :
         if self.it_no is not None :
             mask_ = self.tgt_key_pad_mask[self.not_done_samples][:,self.it_no].bool()
-            mask = torch.zeros((self.bs,self.max_tr_seq_len), dtype=torch.bool)
+            mask = torch.zeros((self.bs,self.max_tr_seq_len), dtype=torch.bool, device=device)
             mask[self.mask_fr_mask()] = mask_
         return self.final_layer(trfrmr_out, mask)
 
@@ -71,12 +71,12 @@ class model_utils(ABC) :
         return quotients,rems
     
     def get_msk_fr_prev_probs_entry(self) :
-        x = torch.zeros((self.actual_bs, self.max_tr_seq_len+1, self.beam_size), dtype=torch.bool)
+        x = torch.zeros((self.actual_bs, self.max_tr_seq_len+1, self.beam_size), dtype=torch.bool, device=device)
         x[:,self.it_no,:] = self.not_done_samples.reshape(-1,self.beam_size)
         return x
 
     def reform(self, trfrmr_out) :
-        prev_probs_here = self.prev_probs[:,self.it_no-1,:] if self.it_no!=0 else torch.zeros((self.actual_bs, self.beam_size))
+        prev_probs_here = self.prev_probs[:,self.it_no-1,:] if self.it_no!=0 else torch.zeros((self.actual_bs, self.beam_size),device=device)
         m = (trfrmr_out.t()+self.prev_probs_here.reshape(-1)).t()
         m[~self.not_done_samples] = 0
         m = m.reshape(-1,self.beam_size*self.vocab_size)
