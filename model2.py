@@ -26,6 +26,8 @@ class xlmb2b(nn.Module, model_utils):
         self.beam_size = 1
         self.k = 1
         self.m = 1
+        self.begin_prgrsiv_xlm_to_plt = False
+        self.begin_prgrsiv_real_to_pred = False
     
     def choose(self) :
         '''Chooses final output beam for each sample using beam_size,
@@ -36,12 +38,22 @@ class xlmb2b(nn.Module, model_utils):
         i = torch.tensor([i for i in range(y.shape[0])],device=device)
         final_out = torch.stack(self.final_out).transpose(0,1)
         final_out = final_out.reshape(self.beam_size,-1,final_out.shape[1])
-        return final_out[y.reshape(-1),i.reshape(-1),:]
+        return self.prev_probs[i,:,y.reshape(-1)], self.sr_tokens, final_out[y.reshape(-1),i.reshape(-1),:]
+    
 
     def get_prgrsiv_embdngs(self, dic, xlm_encoding) :
         plt_embdng = self.plt_embed(dic['input_ids'],dic['langs'], dic['position_ids'])
         return self.m*xlm_encoding+(1-self.m)*plt_embdng
 
+    def get_prgrsiv_tr_embd(self, probs, prgrsiv_sr_embd, tr_embd, tr_dic) :
+        '''Converts tr_embd->k*tr_embd+(1-k)*plt_embdng_of_pred
+            using probs'''
+        if not self.begin_prgrsiv_real_to_pred :
+            return probs, prgrsiv_sr_embd, tr_embd
+        tokens = probs.max(2)[1]
+        plt_embdng = self.plt_embed(tokens, tr_dic['langs'], tr_dic['position_ids'])
+        return probs, prgrsiv_sr_embd, self.m*(tr_embd)+(1-self.m)*plt_embdng
+    
     def forward(self, dat, already_embed = False) :                             #dat is a dictionary with keys==keyword args of xlm
 
         if self.pll_data :
@@ -66,12 +78,13 @@ class xlmb2b(nn.Module, model_utils):
             probs = self.apply_final_layer(trfrmr_out, out['attention_mask'].float())
             out['attention_mask'] = out['attention_mask'].float()
             if not already_embed :
-                return probs, prgrsiv_sr_embd, tr_embd
+                return self.get_prgrsiv_tr_embd(probs, prgrsiv_sr_embd, tr_embd, out)
             else :
                 return probs, sr_embd, prgrsiv_tr_embd    
         else :
 
             inp = dat['X']
+            self.sr_tokens = inp['input_ids']
             self.sr_embd = self.xlm(**self.change_attn_for_xlm(inp))[0].repeat_interleave(self.beam_size,0)
             self.bs = inp['input_ids'].shape[0]*self.beam_size
             self.tgt_key_pad_mask = torch.zeros((self.bs, self.max_tr_seq_len),device=device)

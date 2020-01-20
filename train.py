@@ -69,6 +69,8 @@ def reshape_n_edit(probs) :
   return y[y==y].reshape(-1,vocab_size)
 
 def swap(batch,sr_embd,tr_embd,pll=True) :
+    '''Replaces X with Y and input_ids with embeddings for pll data
+        For mono data , replaces input_ids with predicted tokens'''
     if pll:
         z2=batch['X']
         z = batch['X']['input_ids'].clone()
