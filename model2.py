@@ -4,8 +4,8 @@ import torch.nn as nn
 from preprocessing import tokenizer
 from transformers import XLMTokenizer, XLMWithLMHeadModel, XLMModel
 from utilities import model_utils
+from Globals import *
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 batch_size = 32
 dic = tokenizer.decoder
 
@@ -26,7 +26,7 @@ class xlmb2b(nn.Module, model_utils):
         self.beam_size = 1
         self.k = 1
         self.m = 1
-        self.begin_prgrsiv_xlm_to_plt = False
+        self.begin_prgrsiv_xlm_to_plt = True
         self.begin_prgrsiv_real_to_pred = False
     
     def choose(self) :
@@ -40,10 +40,18 @@ class xlmb2b(nn.Module, model_utils):
         final_out = final_out.reshape(self.beam_size,-1,final_out.shape[1])
         return self.prev_probs[i,:,y.reshape(-1)], self.sr_tokens, final_out[y.reshape(-1),i.reshape(-1),:]
     
-
+    def update(self, update_m) :
+        if update_m :
+            self.m = self.m + ______
+        else :
+            self.k = self.k + ______
+    
     def get_prgrsiv_embdngs(self, dic, xlm_encoding) :
-        plt_embdng = self.plt_embed(dic['input_ids'],dic['langs'], dic['position_ids'])
-        return self.m*xlm_encoding+(1-self.m)*plt_embdng
+        if self.begin_prgrsiv_xlm_to_plt :
+            plt_embdng = self.plt_embed(dic['input_ids'],dic['langs'], dic['position_ids'])
+            self.update(True)
+            return self.m*xlm_encoding+(1-self.m)*plt_embdng
+        return xlm_encoding
 
     def get_prgrsiv_tr_embd(self, probs, prgrsiv_sr_embd, tr_embd, tr_dic) :
         '''Converts tr_embd->k*tr_embd+(1-k)*plt_embdng_of_pred
@@ -52,7 +60,8 @@ class xlmb2b(nn.Module, model_utils):
             return probs, prgrsiv_sr_embd, tr_embd
         tokens = probs.max(2)[1]
         plt_embdng = self.plt_embed(tokens, tr_dic['langs'], tr_dic['position_ids'])
-        return probs, prgrsiv_sr_embd, self.m*(tr_embd)+(1-self.m)*plt_embdng
+        self.update(False)
+        return probs, prgrsiv_sr_embd, self.k*(tr_embd)+(1-self.k)*plt_embdng
     
     def forward(self, dat, already_embed = False) :                             #dat is a dictionary with keys==keyword args of xlm
 

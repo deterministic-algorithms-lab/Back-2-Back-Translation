@@ -9,13 +9,13 @@ from os import path
 from functools import partial
 from nltk.translate.bleu_score import corpus_bleu
 import multiprocessing as mp
+from Globals import *
 
 if path.exists("../../data/file_1.csv"):
     data_obj = load_data(load_ = False)
 else:
     data_obj = load_data(paths = ['./train.en', './train.de'])
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 df_prllel, df_en, df_de = data_obj.final_data()
 pll_train_ds = pll_datst(df_prllel)
@@ -146,13 +146,15 @@ def run(model_forward,model_backward,batch,optimizers,pll=True):
         optimizer.step()
     return a,b,loss
 
+def check_thresholds(loss1,loss2,model_ed,model_de) :
+    if xlm_freezed and loss1<thresh_for_xlm_weight_freeze and loss2<thresh_for_xlm_weight_freeze:
+            unfreeze_weights(model_ed.xlm)
+            xlm_freezed = False
+    if 
+    
 
-num_epochs = 1000
-thresh_for_mono_data = 0.5
 losses_epochs = {"pll" : [], "mono": []}
 optimizers = [optimizer_de,optimizer_ed]
-thresh_for_xlm_weight_freeze = 0.7
-
 freeze_weights(model_de.xlm)
 
 for epoch in tqdm(range(num_epochs)) :
@@ -172,8 +174,7 @@ for epoch in tqdm(range(num_epochs)) :
         losses[1].append(loss2.item())
         del loss2
         synchronize()
-        if losses[0][-1]<thresh_for_xlm_weight_freeze and losses[1][-1]<thresh_for_xlm_weight_freeze :
-            unfreeze_weights(model_ed.xlm)
+        check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de)
         
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
     
