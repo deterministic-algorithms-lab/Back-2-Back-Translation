@@ -63,11 +63,17 @@ class model_utils(ABC) :
             z = z+[0]
             return tensor.permute(z)
 
-
     def plt_embed(self, tokens, langs, positions) :
         y = self.xlm.embeddings(tokens)
+        m=0
+        if len(y.shape)==4 :
+            y = self.cycle_dims(y.transpose(-1,-2))
+            m=1     
         z = y + self.xlm.position_embeddings(positions)
-        return (z.transpose(0,1)+self.xlm.lang_embeddings(lang_id)).transpose(0,1)
+        plt_embed = (z.transpose(0+m,1+m)+self.xlm.lang_embeddings(lang_id)).transpose(0+m,1+m)
+        if m :
+            plt_embed = self.cycle_dims(plt_embed,clockwise=False).transpose(-1,-2)
+        return plt_embed
     
     def embed_for_decoder(self, output_at_it_no, lang_id) :
         y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
