@@ -28,6 +28,8 @@ class xlmb2b(nn.Module, model_utils):
         self.m = 1
         self.begin_prgrsiv_xlm_to_plt = True
         self.begin_prgrsiv_real_to_pred = False
+        self.p = _______
+        self.k_sample = _______
     
     def choose(self) :
         '''Chooses final output beam for each sample using beam_size,
@@ -52,14 +54,33 @@ class xlmb2b(nn.Module, model_utils):
             self.update(True)
             return self.m*xlm_encoding+(1-self.m)*plt_embdng
         return xlm_encoding
+    
+    def filter_logits(self, logits) :
+        sorted_logits, sorted_indices = logits.sort(dim=-1, descending=True)
+        cum_probs = F.softmax(sorted_logits,dim=-1).cumsum(dim=-1)
+        sorted_indices_to_remove = cum_probs>=self.p
+        sorted_indices_to_remove[...,1:] = sorted_indices_to_remove[...,:-1]
+        sorted_indices_to_remove[...,0] = False                              #To ensure at least one is there in top-p
+        indices_to_remove  = sorted_indices[sorted_indices_to_remove]
+        logits[indices_to_remove] = -float('Inf')
+        return logits
 
+    def k_nucleus_sample(self, logits, lang_ids, position_ids) :
+        filtered_logits = self.filter_logits(logits)
+        probs = F.softmax(filtered_logits, dim=-1)
+        token_ids = torch.multinomial(probs,self.k_sample)
+        probs_of_selected_tokens = F.softmax(torch.gather(probs,-1,token_ids),dim=-1)#2 softmax together. Can multiply by 1/k_sample in line 74, instead.        
+        k_plt_embeds = self.plt_embed(token_ids, lang_ids, position_ids)
+        probabilistic_embeds = self.cycle_dims(self.cycle_dims(k_plt_embeds)*probs_of_selected_tokens,clockwise=False)
+        plt_embeds = torch.sum(plt_embeds,dim=-2)
+        return plt_embeds
+    
     def get_prgrsiv_tr_embd(self, probs, prgrsiv_sr_embd, tr_embd, tr_dic) :
         '''Converts tr_embd->k*tr_embd+(1-k)*plt_embdng_of_pred
             using probs'''
         if not self.begin_prgrsiv_real_to_pred :
             return probs, prgrsiv_sr_embd, tr_embd
-        tokens = probs.max(2)[1]
-        plt_embdng = self.plt_embed(tokens, tr_dic['langs'], tr_dic['position_ids'])
+        plt_embdng = self.k_nucleus_sample(probs, tr_dic['langs'], tr_dic['position_ids'])
         self.update(False)
         return probs, prgrsiv_sr_embd, self.k*(tr_embd)+(1-self.k)*plt_embdng
     

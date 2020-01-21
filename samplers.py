@@ -37,7 +37,7 @@ class simpler_sampler() :
         '''
         vec.shape == 1,d_model(1024)
         dic --> dictionary of token embdngs {'i' : 'token_embdng_of_ith_token'}
-        t ---> model to use to get 1024 size embdngs
+        t --> model to use to get 1024 size embdngs
         '''
         if calc_embdngs :
             self.calc_xlm_embdngs()

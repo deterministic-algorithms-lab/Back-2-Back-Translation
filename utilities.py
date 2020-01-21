@@ -54,8 +54,18 @@ class model_utils(ABC) :
             mask[self.mask_fr_mask()] = mask_
         return self.final_layer(trfrmr_out, mask)
 
+    def cycle_dims(self, tensor, clockwise=True) :
+            dims = torch.arange(-1,len(tensor.shape)-1)
+            if clockwise :
+                y = tuple(dims)
+                return tensor.permute(y)
+            z = list(dims+2)
+            z = z+[0]
+            return tensor.permute(z)
+
+
     def plt_embed(self, tokens, langs, positions) :
-        y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
+        y = self.xlm.embeddings(tokens)
         z = y + self.xlm.position_embeddings(positions)
         return (z.transpose(0,1)+self.xlm.lang_embeddings(lang_id)).transpose(0,1)
     

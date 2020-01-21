@@ -148,9 +148,15 @@ def run(model_forward,model_backward,batch,optimizers,pll=True):
 
 def check_thresholds(loss1,loss2,model_ed,model_de) :
     if xlm_freezed and loss1<thresh_for_xlm_weight_freeze and loss2<thresh_for_xlm_weight_freeze:
-            unfreeze_weights(model_ed.xlm)
-            xlm_freezed = False
-    if 
+        unfreeze_weights(model_ed.xlm)
+        xlm_freezed = False
+    elif not model_de.begin_prgrsiv_real_to_pred and loss1<thresh_to_start_real_to_pred_prgrsiv and loss2<thresh_to_start_real_to_pred_prgrsiv :
+        model_de.begin_prgrsiv_real_to_pred = True
+        model_ed.begin_prgrsiv_real_to_pred = True
+        return
+    elif model_de.begin_prgrsiv_xlm_to_plt and epochs>thresh_to_stop_xlm_to_plt_prgrsiv :
+        model_de.begin_prgrsiv_xlm_to_plt = False
+        model_ed.begin_prgrsiv_xlm_to_plt = False
     
 
 losses_epochs = {"pll" : [], "mono": []}
