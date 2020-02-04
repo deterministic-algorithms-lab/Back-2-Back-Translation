@@ -3,7 +3,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from dataset import pll_datst, coll, mono_datst
 from preprocessing import load_data, tokenizer
-from model import xlmb2b
+from model2 import xlmb2b
 from tqdm import tqdm
 from os import path
 from functools import partial
@@ -19,7 +19,7 @@ parser.add_argument('--ksample')
 args = parser.parse_args()
 
 if path.exists(args.dataset_path+"/file_1.csv") :
-    data_obj = load_data(load_ = False, args.dataset_path)
+    data_obj = load_data(load_ = False, dataset_path = args.dataset_path)
 else:
     data_obj = load_data(dataset_path=args.dataset_path)
 

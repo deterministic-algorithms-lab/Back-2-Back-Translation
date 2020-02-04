@@ -6,7 +6,7 @@ import pickle
 tokenizer = XLMTokenizer.from_pretrained("xlm-mlm-ende-1024")
 
 class load_data():
-    def __init__(self, load_ = True, dataset_path, pll_size = 10**5):
+    def __init__(self, load_ = True, dataset_path='/', pll_size = 10**5):
         paths = [dataset_path+'/train.en',dataset_path+'/train.de']
         self.src_lang_path = paths[0]
         self.trgt_lang_path = paths[1]

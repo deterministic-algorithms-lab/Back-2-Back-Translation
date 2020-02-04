@@ -3,7 +3,7 @@ class model_utils(ABC) :
     
     def __init__(self) :
         super().__init__()
-    
+              
     def cut_and_paste_down( batch, dim=1) :
         return batch.transpose(0,1).reshape(-1)
 
