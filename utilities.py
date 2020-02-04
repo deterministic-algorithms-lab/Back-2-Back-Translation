@@ -1,4 +1,8 @@
 from abc import ABC
+import numpy as np
+import torch
+form Globals import *
+
 class model_utils(ABC) :
     
     def __init__(self) :
@@ -8,8 +12,10 @@ class model_utils(ABC) :
         return batch.transpose(0,1).reshape(-1)
 
     def cut_and_paste_up( batch, dim=1, beam_size=1) :
-            '''batch.size = [batch_size*beam_size, z]
-               return size = [batch_size,z*beam_size]'''
+        '''
+        batch.size = [batch_size*beam_size, z]
+        return size = [batch_size,z*beam_size]
+        '''
         return batch.reshape(beam_size,-1,batch.shape[1]).transpose(0,1).reshape(-1,beam_size*batch.shape[1])
 
     def convert_mask_to_inf( mask):

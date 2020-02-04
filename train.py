@@ -157,7 +157,8 @@ def run(model_forward,model_backward,batch,optimizers,pll=True):
         optimizer.step()
     return a,b,loss
 
-def check_thresholds(loss1,loss2,model_ed,model_de) :
+def check_thresholds(loss1,loss2,model_ed,model_de, epochs) :
+    global xlm_freezed
     if xlm_freezed and loss1<thresh_for_xlm_weight_freeze and loss2<thresh_for_xlm_weight_freeze:
         unfreeze_weights(model_ed.xlm)
         xlm_freezed = False
@@ -173,7 +174,7 @@ def check_thresholds(loss1,loss2,model_ed,model_de) :
 losses_epochs = {"pll" : [], "mono": []}
 optimizers = [optimizer_de,optimizer_ed]
 freeze_weights(model_de.xlm)
-
+xlm_freezed = True
 for epoch in tqdm(range(num_epochs)) :
 
     print(epoch)
@@ -191,7 +192,7 @@ for epoch in tqdm(range(num_epochs)) :
         losses[1].append(loss2.item())
         del loss2
         synchronize()
-        check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de)
+        check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de, epoch)
         
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
     
