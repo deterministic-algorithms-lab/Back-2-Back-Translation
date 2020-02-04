@@ -84,7 +84,7 @@ class xlmb2b(nn.Module, model_utils):
         self.update(False)
         return probs, prgrsiv_sr_embd, self.k*(tr_embd)+(1-self.k)*plt_embdng
     
-    def forward(self, dat, already_embed = False) :                             #dat is a dictionary with keys==keyword args of xlm
+    def forward(self, dat, already_embed = False) :
 
         if self.pll_data :
             inp = dat['X']
@@ -92,7 +92,7 @@ class xlmb2b(nn.Module, model_utils):
 
             if not already_embed :
                 sr_embd =  self.xlm(**self.change_attn_for_xlm(inp))[0]
-                tr_embd = self.xlm(**self.change_attn_for_xlm(out))[0]                                    #(xlm_out/trnsfrmr_tar).shape = (batch_size,seq_len,1024)
+                tr_embd = self.xlm(**self.change_attn_for_xlm(out))[0]
                 prgrsiv_sr_embd = self.get_prgrsiv_embdngs(inp, sr_embd)
                 prgrsiv_tr_embd = self.get_prgrsiv_embdngs(out, tr_embd)
             else :
