@@ -3,11 +3,11 @@ class model_utils(ABC) :
     
     def __init__(self) :
         super().__init__()
-              
+
     def cut_and_paste_down( batch, dim=1) :
         return batch.transpose(0,1).reshape(-1)
 
-    def cut_and_paste_up( batch, dim=1, beam_size) :
+    def cut_and_paste_up( batch, dim=1, beam_size=1) :
             '''batch.size = [batch_size*beam_size, z]
                return size = [batch_size,z*beam_size]'''
         return batch.reshape(beam_size,-1,batch.shape[1]).transpose(0,1).reshape(-1,beam_size*batch.shape[1])
@@ -63,16 +63,34 @@ class model_utils(ABC) :
             z = z+[0]
             return tensor.permute(z)
 
+    def k_sample_to_flat(self, tokens, langs, positions) :
+        '''
+        tokens.size == [b_sz, seq_len, k_sample]
+        langs.size,positions.size == [b_sz, seq_len]
+        '''
+        tokens = self.cycle_dims(tokens)
+        langs = langs.repeat(tokens.size(0),1)
+        positions = positions.repeat(tokens.size(0),1)
+        tokens = tokens.reshape(-1, tokens.size(2))
+        return tokens, langs, positions
+
+    def flat_to_k_sample(self, plt_embed) :
+        '''plt_embed.shape = [k_sample*b_sz, seq_len, d_model]
+           return shape = [b_sz, seq_len, k_sample, d_model]'''
+        plt_embed = plt_embed.reshape(k,-1,plt_embed.size(1),plt_embed.size(2))
+        return plt_embed.transpose(0,1).transpose(1,2)
+    
     def plt_embed(self, tokens, langs, positions) :
-        y = self.xlm.embeddings(tokens)
-        m=0
-        if len(y.shape)==4 :
-            y = self.cycle_dims(y.transpose(-1,-2))
-            m=1     
+        '''Returns plt_embdng of shape [b_sz, seq_len, d_model] or
+            [b_sz, seq_len, k, d_model] if nucleus sampling is done.'''
+        if len(tokens.shape)==3 :
+            k = tokens.size(2)
+            tokens, langs, positions = self.k_sample_to_flat(tokens, langs, positions)                    
+        y = self.xlm.embeddings(tokens)     
         z = y + self.xlm.position_embeddings(positions)
-        plt_embed = (z.transpose(0+m,1+m)+self.xlm.lang_embeddings(lang_id)).transpose(0+m,1+m)
-        if m :
-            plt_embed = self.cycle_dims(plt_embed,clockwise=False).transpose(-1,-2)
+        plt_embed = z+self.xlm.lang_embeddings(langs)
+        if len(tokens.shape)==3 :
+            plt_embed = self.flat_to_k_sample(plt_embed)        
         return plt_embed
     
     def embed_for_decoder(self, output_at_it_no, lang_id) :

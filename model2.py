@@ -68,11 +68,11 @@ class xlmb2b(nn.Module, model_utils):
     def k_nucleus_sample(self, logits, lang_ids, position_ids) :
         filtered_logits = self.filter_logits(logits)
         probs = F.softmax(filtered_logits, dim=-1)
-        token_ids = torch.multinomial(probs,self.k_sample)
-        probs_of_selected_tokens = F.softmax(torch.gather(probs,-1,token_ids),dim=-1)#2 softmax together. Can multiply by 1/k_sample in line 74, instead.        
+        token_ids = torch.multinomial(probs,self.k_sample)  
+        probs_of_selected_tokens = F.softmax(torch.gather(probs,-1,token_ids),dim=-1)   #2 softmax together. Can multiply by 1/k_sample in line 74, instead.        
         k_plt_embeds = self.plt_embed(token_ids, lang_ids, position_ids)
         probabilistic_embeds = self.cycle_dims(self.cycle_dims(k_plt_embeds)*probs_of_selected_tokens,clockwise=False)
-        plt_embeds = torch.sum(plt_embeds,dim=-2)
+        plt_embeds = torch.sum(probabilistic_embeds,dim=-2)
         return plt_embeds
     
     def get_prgrsiv_tr_embd(self, probs, prgrsiv_sr_embd, tr_embd, tr_dic) :
