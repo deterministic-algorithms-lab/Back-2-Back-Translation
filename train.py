@@ -10,11 +10,18 @@ from functools import partial
 from nltk.translate.bleu_score import corpus_bleu
 import multiprocessing as mp
 from Globals import *
+import argparse
 
-if path.exists("../../data/file_1.csv"):
-    data_obj = load_data(load_ = False)
+parser = argparse.ArgumentParser(description= 'Train the Model')
+parser.add_argument('--dataset_path')
+parser.add_argument('--p')
+parser.add_argument('--ksample')
+args = parser.parse_args()
+
+if path.exists(args.dataset_path+"/file_1.csv") :
+    data_obj = load_data(load_ = False, args.dataset_path)
 else:
-    data_obj = load_data(paths = ['./train.en', './train.de'])
+    data_obj = load_data(dataset_path=args.dataset_path)
 
 
 df_prllel, df_en, df_de = data_obj.final_data()
@@ -31,6 +38,10 @@ model_ed = xlmb2b().double().to(device)
 model_de = xlmb2b().double().to(device)
 del model_ed.xlm
 model_ed.xlm = model_de.xlm
+model_ed.p = args.p
+model_de.p = args.p
+model_ed.k_sample = args.ksample
+model_de.k_sample = args.ksample
 
 cpus = mp.cpu_count()
 pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)

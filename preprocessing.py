@@ -6,7 +6,8 @@ import pickle
 tokenizer = XLMTokenizer.from_pretrained("xlm-mlm-ende-1024")
 
 class load_data():
-    def __init__(self, load_ = True, paths = ['../../data/train.en','../../data/train.de'], pll_size = 10**5):
+    def __init__(self, load_ = True, dataset_path, pll_size = 10**5):
+        paths = [dataset_path+'/train.en',dataset_path+'/train.de']
         self.src_lang_path = paths[0]
         self.trgt_lang_path = paths[1]
         self.pll_size = pll_size
@@ -39,7 +40,7 @@ class load_data():
             d = 0
             '''
             for df in [df_prllel, df_eng, df_de]:
-                with open('../../data/file_'+str(d)+'.pkl', 'wb+') as f :
+                with open(self.dataset_path+'/file_'+str(d)+'.pkl', 'wb+') as f :
                     pickle.dump(df,f)
                 d = d+1
             '''
@@ -47,7 +48,7 @@ class load_data():
             [df_prllel,df_en,df_de] = [None]*3
             d=0
             for var in [df_prllel,df_en, df_de] :
-                with open('../../data/file_'+str(d)+'.pkl', 'rb') as f :
+                with open(self.dataset_path+'/file_'+str(d)+'.pkl', 'rb') as f :
                     var = pickle.load(f)
                 d=d+1
                 

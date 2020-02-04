@@ -28,8 +28,8 @@ class xlmb2b(nn.Module, model_utils):
         self.m = 1
         self.begin_prgrsiv_xlm_to_plt = True
         self.begin_prgrsiv_real_to_pred = False
-        self.p = _______
-        self.k_sample = _______
+        self.p = None #_______
+        self.k_sample = None #_______
     
     def choose(self) :
         '''Chooses final output beam for each sample using beam_size,
@@ -44,9 +44,9 @@ class xlmb2b(nn.Module, model_utils):
     
     def update(self, update_m) :
         if update_m :
-            self.m = self.m + ______
+            self.m = self.m + 0.01 #______
         else :
-            self.k = self.k + ______
+            self.k = self.k + 0.01 #______
     
     def get_prgrsiv_embdngs(self, dic, xlm_encoding) :
         if self.begin_prgrsiv_xlm_to_plt :
