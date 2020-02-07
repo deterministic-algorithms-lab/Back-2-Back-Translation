@@ -16,6 +16,8 @@ parser = argparse.ArgumentParser(description= 'Train the Model')
 parser.add_argument('--dataset_path')
 parser.add_argument('--p')
 parser.add_argument('--ksample')
+parser.add_argument('--batch_size', type=int)
+parser.add_argument('--trfrmr_nlayers', type=int)
 args = parser.parse_args()
 
 if path.exists(args.dataset_path+"/file_1.csv") :
@@ -30,12 +32,12 @@ mono_train_ds_en = mono_datst(df_en)
 mono_train_ds_de = mono_datst(df_de, lang='de')
 vocab_size = tokenizer.vocab_size
 
-b_sz = 32
-batch_size = 32
+b_sz = args.batch_size
+batch_size = args.batch_size
 d_model = 1024
 
-model_ed = xlmb2b().double().to(device)
-model_de = xlmb2b().double().to(device)
+model_ed = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
+model_de = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
 del model_ed.xlm
 model_ed.xlm = model_de.xlm
 model_ed.p = args.p
