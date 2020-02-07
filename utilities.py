@@ -1,7 +1,7 @@
 from abc import ABC
 import numpy as np
 import torch
-form Globals import *
+from Globals import *
 
 class model_utils(ABC) :
     
