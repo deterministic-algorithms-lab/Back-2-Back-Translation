@@ -1,5 +1,7 @@
 import torch
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+import torch_xla
+import torch_xla.core.xla_model as xm
+device = xm.xla_device()
 num_epochs = 1000
 thresh_for_mono_data = 0.5
 thresh_for_xlm_weight_freeze = 0.7 
