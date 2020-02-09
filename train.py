@@ -14,8 +14,8 @@ import argparse
 
 parser = argparse.ArgumentParser(description= 'Train the Model')
 parser.add_argument('--dataset_path')
-parser.add_argument('--p')
-parser.add_argument('--ksample')
+parser.add_argument('--p', type=float)
+parser.add_argument('--ksample', type=int)
 parser.add_argument('--batch_size', type=int)
 parser.add_argument('--trfrmr_nlayers', type=int)
 args = parser.parse_args()
@@ -42,8 +42,8 @@ del model_ed.xlm
 model_ed.xlm = model_de.xlm
 model_ed.p = args.p
 model_de.p = args.p
-model_ed.k_sample = args.ksample
-model_de.k_sample = args.ksample
+model_ed.beam_size = args.ksample
+model_de.beam_size = args.ksample
 
 cpus = mp.cpu_count()
 pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)
@@ -204,8 +204,8 @@ for epoch in tqdm(range(num_epochs)) :
 
         print("Going for Monolingual Training")
 
-        model_ed.pll_dat = False
-        model_de.pll_dat = False
+        model_ed.pll_data = False
+        model_de.pll_data = False
         losses = [[], []]
 
         for i, batch in enumerate(mono_train_loader_en):

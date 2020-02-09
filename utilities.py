@@ -101,7 +101,7 @@ class model_utils(ABC) :
     
     def embed_for_decoder(self, output_at_it_no, lang_id) :
         y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
-        z = y + self.xlm.position_embeddings(self.it_no)
+        z = y + self.xlm.position_embeddings(torch.tensor(self.it_no).long())
         return (z+self.xlm.lang_embeddings(lang_id))
 
     def indi(self) :
@@ -117,7 +117,7 @@ class model_utils(ABC) :
 
     def reform(self, trfrmr_out) :
         prev_probs_here = self.prev_probs[:,self.it_no-1,:] if self.it_no!=0 else torch.zeros((self.actual_bs, self.beam_size),device=device)
-        m = (trfrmr_out.t()+self.prev_probs_here.reshape(-1)).t()
+        m = (trfrmr_out.t()+prev_probs_here.reshape(-1)).t()
         m[~self.not_done_samples] = 0
         m = m.reshape(-1,self.beam_size*self.vocab_size)
         msk_fr_prev_probs_entry = self.get_msk_fr_prev_probs_entry()

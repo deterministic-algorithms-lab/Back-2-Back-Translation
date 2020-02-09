@@ -29,7 +29,7 @@ class xlmb2b(nn.Module, model_utils):
         self.begin_prgrsiv_xlm_to_plt = True
         self.begin_prgrsiv_real_to_pred = False
         self.p = None #_______
-        self.k_sample = None #_______
+        self.beam_size = 1 #_______
     
     def choose(self) :
         '''Chooses final output beam for each sample using beam_size,
@@ -68,7 +68,7 @@ class xlmb2b(nn.Module, model_utils):
     def k_nucleus_sample(self, logits, lang_ids, position_ids) :
         filtered_logits = self.filter_logits(logits)
         probs = F.softmax(filtered_logits, dim=-1)
-        token_ids = torch.multinomial(probs,self.k_sample)  
+        token_ids = torch.multinomial(probs,self.beam_size)  
         probs_of_selected_tokens = F.softmax(torch.gather(probs,-1,token_ids),dim=-1)   #2 softmax together. Can multiply by 1/k_sample in line 74, instead.        
         k_plt_embeds = self.plt_embed(token_ids, lang_ids, position_ids)
         probabilistic_embeds = self.cycle_dims(self.cycle_dims(k_plt_embeds)*probs_of_selected_tokens,clockwise=False)
@@ -117,6 +117,7 @@ class xlmb2b(nn.Module, model_utils):
             self.sr_tokens = inp['input_ids']
             self.sr_embd = self.xlm(**self.change_attn_for_xlm(inp))[0].repeat_interleave(self.beam_size,0)
             self.bs = inp['input_ids'].shape[0]*self.beam_size
+            self.max_tr_seq_len = self.beam_size*self.max_tr_seq_len
             self.tgt_key_pad_mask = torch.zeros((self.bs, self.max_tr_seq_len),device=device)
             self.mem_key_pad_mask = inp['attention_mask'].repeat_interleave(self.beam_size,0)
             self.tgt_mask = self.get_tgt_mask(self.max_tr_seq_len,0)
@@ -126,7 +127,7 @@ class xlmb2b(nn.Module, model_utils):
             self.final_out = []                                                      #then iteration number(it_no) == n-1
             self.lengs = torch.zeros((self.bs),device=device)
             self.actual_bs = int(self.bs/self.beam_size)
-            self.prev_probs = torch.zeros((self.actual_bs,self.max_tr_seq_len+1,self.beam_size), device=device)
+            self.prev_probs = torch.zeros((self.actual_bs,self.max_tr_seq_len+1,self.beam_size), device=device, dtype=torch.float64)
             self.tgt_key_pad_mask[:,self.it_no] = torch.ones((self.bs), device=device)
             self.just_now_completed_samples_mask = torch.zeros((self.bs), dtype=torch.bool, device=device)
             self.seq_len_sr = inp['lengths'].max()
@@ -134,17 +135,17 @@ class xlmb2b(nn.Module, model_utils):
             while True :
 
                 trfrmr_out = self.trnsfrmr_dcodr(tgt=self.tr_embd.transpose(0,1),
-                                                 memory=self.sr_embd.transpose(0,1), tgt_mask=tgt_mask,
+                                                 memory=self.sr_embd.transpose(0,1), tgt_mask=self.tgt_mask,
                                                  tgt_key_padding_mask=~(self.tgt_key_pad_mask.bool()),
                                                  memory_key_padding_mask=~(self.mem_key_pad_mask.bool())).transpose(0,1)
                 
                 val, masky = self.apply_final_layer( trfrmr_out, self.tgt_key_pad_mask.float() )
-                trfrmr_out = torch.zeros((self.bs,self.vocab_size), device=device)
+                trfrmr_out = torch.zeros((self.bs,self.vocab_size), device=device, dtype=torch.float64)
                 trfrmr_out[masky[:,self.it_no+1].bool()] = val
                 self.tgt_key_pad_mask = self.tgt_key_pad_mask.long()
                 dic_indices = self.reform(trfrmr_out)
                 dic_indices[~self.not_done_samples] = tokenizer.pad_token_id
-                output_at_it_no = torch.zeros((self.bs,1), dtype=torch.float64, device=device)
+                output_at_it_no = torch.zeros((self.bs,1), dtype=torch.long, device=device)
                 output_at_it_no[self.not_done_samples] = self.dic_tensor[dic_indices].reshape(-1,1)[self.not_done_samples]
                 self.final_out.append(output_at_it_no)
                 self.tr_embd[self.not_done_samples,self.it_no+1,:] = self.embed_for_decoder(output_at_it_no[self.not_done_samples], inp['langs'][:,self.it_no])           #Adding next words embeddings to context for decoder
@@ -166,4 +167,4 @@ class xlmb2b(nn.Module, model_utils):
                     return self.choose()
                 
                 self.it_no+=1
-                self.tgt_mask = self.get_tgt_mask(self.tgt_mask, self.it_no)
+                self.tgt_mask = self.get_tgt_mask(self.max_tr_seq_len, self.it_no)

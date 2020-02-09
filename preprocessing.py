@@ -35,8 +35,8 @@ class load_data():
             self.load()
             zipped_list = list(zip(self.src_tokens, self.trgt_tokens))
             df_prllel = pd.DataFrame(zipped_list, columns = ['en', 'de'], dtype=object)
-            df_eng = pd.DataFrame(self.src_tokens)
-            df_de = pd.DataFrame(self.trgt_tokens)
+            df_eng = df_prllel.drop('de', axis=1)
+            df_de = df_prllel.drop('en', axis=1)
             d = 0
             '''
             for df in [df_prllel, df_eng, df_de]:
