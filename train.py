@@ -81,6 +81,18 @@ def reshape_n_edit(probs) :
   y = probs.reshape(-1,vocab_size)
   return y[y==y].reshape(-1,vocab_size)
 
+def assign_features(batch) :
+    batch['X']['attention_mask'] = (batch['X']['input_ids']==tokenizer.pad_token_id).float()
+    batch['X']['lengths'] = batch['X']['attention_mask'].sum(dim=1).long()
+    max_size = int(batch['X']['lengths'].max())
+    bs = batch['X']['input_ids'].shape[0]
+    batch['X']['position_ids'] = torch.tensor([[i for i in range(max_size)]*bs], dtype=torch.long)
+    if (batch['X']['langs']==en_lang_id).sum() == 0 :
+        batch['X']['langs'] = torch.LongTensor([[en_lang_id]*max_size for i in range(b_sz)])
+    else :
+        batch['X']['langs'] = torch.LongTensor([[de_lang_id]*max_size for i in range(b_sz)])
+    return batch
+
 def swap(batch,sr_embd,tr_embd,pll=True) :
     '''Replaces X with Y and input_ids with embeddings for pll data
         For mono data , replaces input_ids with predicted tokens'''
@@ -95,13 +107,13 @@ def swap(batch,sr_embd,tr_embd,pll=True) :
         return batch, z, z1
 
     else:
-        z = batch['X']['input_ids'].clone()
-        batch['X']['input_ids'] = tr_embd
         batch1 = {}
-        batch1['X']['input_ids'] = z
-        for k,v in batch :
-            if k!='input_ids' :
-                batch1['X'][k]=v
+        batch1['X'] = {}
+        for k, v in batch['X'].items() :
+            batch1['X'][k] = v.clone()
+        z = batch1['X']['input_ids']
+        batch['X']['input_ids'] = tr_embd
+        batch = assign_features(batch) 
     return batch, z, batch1
 
 def flip_masks(batch) :

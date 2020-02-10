@@ -39,7 +39,7 @@ class xlmb2b(nn.Module, model_utils):
         y = s.max(2)[1]                                                   #batch_sizeX1
         i = torch.tensor([i for i in range(y.shape[0])],device=device)
         final_out = torch.stack(self.final_out).transpose(0,1)
-        final_out = final_out.reshape(self.beam_size,-1,final_out.shape[1])
+        final_out = final_out.reshape(self.beam_size,-1,final_out.shape[1])        
         return self.prev_probs[i,:,y.reshape(-1)], self.sr_tokens, final_out[y.reshape(-1),i.reshape(-1),:]
     
     def update(self, update_m) :
@@ -148,7 +148,7 @@ class xlmb2b(nn.Module, model_utils):
                 output_at_it_no = torch.zeros((self.bs,1), dtype=torch.long, device=device)
                 output_at_it_no[self.not_done_samples] = self.dic_tensor[dic_indices].reshape(-1,1)[self.not_done_samples]
                 self.final_out.append(output_at_it_no)
-                self.tr_embd[self.not_done_samples,self.it_no+1,:] = self.embed_for_decoder(output_at_it_no[self.not_done_samples], inp['langs'][:,self.it_no])           #Adding next words embeddings to context for decoder
+                self.tr_embd[self.not_done_samples,self.it_no+1,:] = self.embed_for_decoder(output_at_it_no[self.not_done_samples], inp['langs'][:,0]).squeeze(dim=1)           #Adding next words embeddings to context for decoder
                 
                 ind = output_at_it_no[self.not_done_samples]!=self.end_tok
                 ind=ind.reshape(-1)
@@ -162,7 +162,7 @@ class xlmb2b(nn.Module, model_utils):
                 
                 self.tgt_key_pad_mask[self.mask_fr_mask()] = 1
                 
-                if self.not_done_samples.sum()==0 or self.it_no==self.max_tr_seq_len-1:
+                if self.not_done_samples.sum()==0 or self.it_no==self.max_tr_seq_len-2:
                     self.it_no = None
                     return self.choose()
                 
