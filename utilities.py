@@ -135,7 +135,7 @@ class model_utils(ABC) :
         return dic
 
     def calc_just_now_completed_samples_mask(self,ind) :
-        self.just_now_completed_samples_mask[:,:] = False
+        self.just_now_completed_samples_mask[:] = False
         self.just_now_completed_samples_mask[self.not_done_samples==True] = ~ind
         self.not_done_samples[self.not_done_samples==True] = ind
 

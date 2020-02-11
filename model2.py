@@ -156,7 +156,7 @@ class xlmb2b(nn.Module, model_utils):
                 
                 if new_done_samples_len!=0 :
                     self.calc_just_now_completed_samples_mask(ind)
-                    self.lengs[self.just_now_completed_samples_mask] = it_no+1
+                    self.lengs[self.just_now_completed_samples_mask] = self.it_no+1
                     self.mem_key_pad_mask[self.just_now_completed_samples_mask] = 0 #torch.zeros((new_done_samples_len, self.seq_len_sr)).long()
                     self.tgt_key_pad_mask[self.just_now_completed_samples_mask] = 0 #torch.zeros((new_done_samples_len, self.max_tr_seq_len)).long()
                 
