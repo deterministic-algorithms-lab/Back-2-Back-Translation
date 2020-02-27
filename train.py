@@ -150,6 +150,11 @@ def evaluate(model, i, beam_size=3) :
     print(str(i)+"th, Forward Model: ", model[0](c))
     print(str(i)+"th, Backward Model: ", model[1](d))
 
+def save_models(i) :
+    if i%1000==0 :
+        torch.save(model_ed.state_dict(),'weights/model_ed.param')
+        torch.save(model_de.state_dict(), 'weights/model_de.param')
+
 def synchronize() :
     if torch.cuda.is_available() :
         torch.cuda.synchronize()
@@ -207,6 +212,7 @@ for epoch in tqdm(range(num_epochs)) :
         del loss2
         synchronize()
         check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de, epoch)
+        save_models(i)
         
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
     
@@ -226,6 +232,7 @@ for epoch in tqdm(range(num_epochs)) :
             losses[0].append(loss1.item())
             del loss1
             synchronize()
+            save_models(i)
 
         for i, batch in enumerate(mono_train_loader_de):
             
@@ -234,5 +241,6 @@ for epoch in tqdm(range(num_epochs)) :
             losses[1].append(loss2.item())
             del loss2
             synchronize()
+            save_models(i)
 
         losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
