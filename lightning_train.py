@@ -10,12 +10,7 @@ from functools import partial
 from nltk.translate.bleu_score import corpus_bleu
 import multiprocessing as mp
 from Globals import *
-import torch_xla
-import torch_xla.core.xla_model as xm
-import torch_xla.debug.metrics as met
-import torch_xla.distributed.parallel_loader as pl
-import torch_xla.distributed.xla_multiprocessing as xmp
-import torch_xla.utils.utils as xu
+import pytorch_lightning as pl
 import argparse
 
 parser = argparse.ArgumentParser(description= 'Train the Model')
@@ -24,41 +19,13 @@ parser.add_argument('--p', type=float)
 parser.add_argument('--ksample', type=int)
 parser.add_argument('--batch_size', type=int)
 parser.add_argument('--trfrmr_nlayers', type=int)
+parser.add_argument('--lr', type=float, default=0.01)
 args = parser.parse_args()
 
-if path.exists(args.dataset_path+"/file_1.csv") :
-    data_obj = load_data(load_ = False, dataset_path = args.dataset_path)
-else:
-    data_obj = load_data(dataset_path=args.dataset_path)
 
-
-df_prllel, df_en, df_de = data_obj.final_data()
-pll_train_ds = pll_datst(df_prllel)
-mono_train_ds_en = mono_datst(df_en)
-mono_train_ds_de = mono_datst(df_de, lang='de')
-vocab_size = tokenizer.vocab_size
-
-b_sz = args.batch_size
-batch_size = args.batch_size
-d_model = 1024
-
-model_ed = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
-model_de = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
-del model_ed.xlm
-model_ed.xlm = model_de.xlm
-model_ed.p = args.p
-model_de.p = args.p
-model_ed.beam_size = args.ksample
-model_de.beam_size = args.ksample
-
-cpus = mp.cpu_count()
-pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)
-mono_train_loader_en = DataLoader(mono_train_ds_en, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
-mono_train_loader_de = DataLoader(mono_train_ds_de, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
-optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
-optimizer_de = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
 mseloss = nn.MSELoss()
 cross_entropy_loss = nn.CrossEntropyLoss()
+cpus = mp.cpu_count()
 
 def calculate_bleu(ref, cand, weights = (0.25, 0.25, 0.25, 0.25)):
   """
@@ -165,23 +132,6 @@ def synchronize() :
     if torch.cuda.is_available() :
         torch.cuda.synchronize()
 
-def run(model_forward,model_backward,batch,optimizers,pll=True):
-    probs, sr_embd, tr_embd = model_forward(batch)
-    if pll : loss_pll = cross_entropy_loss(reshape_n_edit(probs), remove_pad_tokens(batch['Y']['input_ids'].reshape(-1)) )
-    batch, a, b = swap(batch, sr_embd, tr_embd, pll)
-    probs_, sr_embd_, tr_embd_ = model_backward(batch, True)
-    loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
-    if pll : loss = loss_pll + loss_b2b
-    else : loss = loss_b2b
-    for optimizer in optimizers :
-        optimizer.zero_grad()
-    loss.backward()
-    del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, probs
-    synchronize()
-    for optimizer in optimizers :
-        optimizer.step()
-    return a,b,loss
-
 def check_thresholds(loss1,loss2,model_ed,model_de, epochs) :
     global xlm_freezed
     if xlm_freezed and loss1<thresh_for_xlm_weight_freeze and loss2<thresh_for_xlm_weight_freeze:
@@ -194,63 +144,85 @@ def check_thresholds(loss1,loss2,model_ed,model_de, epochs) :
     elif model_de.begin_prgrsiv_xlm_to_plt and epochs>thresh_to_stop_xlm_to_plt_prgrsiv :
         model_de.begin_prgrsiv_xlm_to_plt = False
         model_ed.begin_prgrsiv_xlm_to_plt = False
+
+class ForTraining(pl.LightningModule) :
+
+    def get_dataset(self) :
+        if path.exists(args.dataset_path+"/file_1.csv") :
+            data_obj = load_data(load_ = False, dataset_path = args.dataset_path)
+        else:
+            data_obj = load_data(dataset_path=args.dataset_path)
+
+        df_prllel, df_en, df_de = data_obj.final_data()
+        pll_train_ds = pll_datst(df_prllel)
+        
+        if self.lang == 'en' :
+            self.mono_train_ds = mono_datst(df_en)
+        else :
+            self.mono_train_ds = mono_datst(df_de, lang='de')
+        self.pll_train_ds = pll_train_ds
+
+    
+    def __init__(self, args, mode, lang='en') :
+        self.args = args
+        self.model_ed = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers)
+        self.model_de = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers)
+        del self.model_ed.xlm
+        self.model_ed.xlm = self.model_de.xlm
+        self.model_ed.p = args.p
+        self.model_de.p = args.p
+        self.model_ed.beam_size = args.ksample
+        self.model_de.beam_size = args.ksample
+        self.mode = mode
+        self.vocab_size = tokenizer.vocab_size
+        self.b_sz = args.batch_size
+        self.batch_size = args.batch_size
+        self.d_model = 1024
+        self.lang = lang
+        self.get_dataset()
+        self.model_ed.pll_dat=True
+        self.model_de.pll_dat=True
+        self.losses = [[], []]
     
 
-losses_epochs = {"pll" : [], "mono": []}
-optimizers = [optimizer_de,optimizer_ed]
-freeze_weights(model_de.xlm)
-xlm_freezed = True
-for epoch in tqdm(range(num_epochs)) :
+    @pl.data_loader
+    def train_dataloader(self) :
+        if self.mode == 'pll' :
+            return DataLoader(self.pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)
+        else :
+            return DataLoader(self.mono_train_ds, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
 
-    print(epoch)
-    model_ed.pll_dat=True
-    model_de.pll_dat=True
-    losses = [[], []]
-    para_loader = pl.ParallelLoader(pll_train_loader, [device])
-    for i, batch in enumerate(para_loader.per_device_loader(device)) :
-        batch = send_to_gpu(batch, pll=True)
-        batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
+    def run(self, model_forward, model_backward, batch, pll=True):
+        probs, sr_embd, tr_embd = model_forward(batch)
+        
+        if pll : 
+            loss_pll = cross_entropy_loss(reshape_n_edit(probs), remove_pad_tokens(batch['Y']['input_ids'].reshape(-1)) )
+        
+        batch, a, b = swap(batch, sr_embd, tr_embd, pll)
+        probs_, sr_embd_, tr_embd_ = model_backward(batch, True)
+        loss_b2b = cross_entropy_loss(reshape_n_edit(probs_), remove_pad_tokens(a.reshape(-1)))
+        
+        if pll : loss = loss_pll + loss_b2b
+        else : loss = loss_b2b
+        
+        return a,b,loss
+
+    def training_step(self, batch, batch_num) :
+        
+        batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = self.run(self.model_ed,self.model_de,batch)
         losses[0].append(loss1.item())
-        del loss1
-        synchronize()
+        
         batch = flip_masks(batch)
-        _,_,loss2 = run(model_de,model_ed,batch,optimizers)
+        _,_,loss2 = self.run(self.model_de,self.model_ed,batch)
         losses[1].append(loss2.item())
-        del loss2
-        synchronize()
+        
         check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de, epoch)
         save_models(i)
         
-    losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
-    
-#Training on monolingual data if the above losses are sufficiently low:
-
-    if(losses_epochs['pll'][-1][0]<thresh_for_mono_data or losses['pll'][-1][1]<thresh_for_mono_data):
-
-        print("Going for Monolingual Training")
-
-        model_ed.pll_data = False
-        model_de.pll_data = False
-        losses = [[], []]
-
-        para_loader_en = pl.ParallelLoader(mono_train_loader_en, [device])
-        para_loader_de = pl.ParallelLoader(mono_train_loader_de, [device])
+        return loss1+loss2
         
-        for i, batch in enumerate(para_loader_en.per_device_loader(device)) :
-            batch = send_to_gpu(batch, pll=False)
-            _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
-            losses[0].append(loss1.item())
-            del loss1
-            synchronize()
-            save_models(i)
+    def configure_optimizers(self) :
+        params = list(self.model_ed.parameters()) + list(self.model_de.parameters())
+        return torch.optim.Adam(params, lr=self.args.lr)
+       
 
-        for i, batch in enumerate(para_loader_de.per_device_loader(device)):
-            
-            batch = send_to_gpu(batch, pll=False)
-            _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
-            losses[1].append(loss2.item())
-            del loss2
-            synchronize()
-            save_models(i)
-
-        losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
