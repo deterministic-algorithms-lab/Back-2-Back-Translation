@@ -18,13 +18,13 @@ class load_data():
         self.src_tokens = []
         self.trgt_tokens = []
 
-        with open(self.src_lang_path, 'rt') as f:
+        with open(self.src_lang_path, encoding='utf-8') as f:
           while(i!=self.pll_size):
             input_ids = torch.tensor(tokenizer.encode('<s><s>'+f.readline()+'</s>')[1:-1])
             self.src_tokens.append(input_ids)
             i = i + 1
 
-        with open(self.trgt_lang_path, 'rt') as f:
+        with open(self.trgt_lang_path, encoding='utf-8') as f:
           while(i!=2*self.pll_size):
             input_ids = torch.tensor(tokenizer.encode('<s><s>'+f.readline()+'</s>')[1:-1])
             self.trgt_tokens.append(input_ids)

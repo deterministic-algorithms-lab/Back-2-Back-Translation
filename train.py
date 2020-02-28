@@ -31,7 +31,7 @@ if path.exists(args.dataset_path+"/file_1.csv") :
 else:
     data_obj = load_data(dataset_path=args.dataset_path)
 
-
+print('Beginning data into tables')
 df_prllel, df_en, df_de = data_obj.final_data()
 pll_train_ds = pll_datst(df_prllel)
 mono_train_ds_en = mono_datst(df_en)
@@ -41,7 +41,7 @@ vocab_size = tokenizer.vocab_size
 b_sz = args.batch_size
 batch_size = args.batch_size
 d_model = 1024
-
+print('Beginning loading models')
 model_ed = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
 model_de = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
 del model_ed.xlm
@@ -50,8 +50,8 @@ model_ed.p = args.p
 model_de.p = args.p
 model_ed.beam_size = args.ksample
 model_de.beam_size = args.ksample
-
-cpus = mp.cpu_count()
+print('Making Data loaders')
+cpus = 1 #mp.cpu_count()
 pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)
 mono_train_loader_en = DataLoader(mono_train_ds_en, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
 mono_train_loader_de = DataLoader(mono_train_ds_de, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
@@ -208,6 +208,7 @@ for epoch in tqdm(range(num_epochs)) :
     losses = [[], []]
     para_loader = pl.ParallelLoader(pll_train_loader, [device])
     for i, batch in enumerate(para_loader.per_device_loader(device)) :
+        print('Another Sample Done')
         batch = send_to_gpu(batch, pll=True)
         batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
         losses[0].append(loss1.item())
