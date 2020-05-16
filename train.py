@@ -12,6 +12,10 @@ import multiprocessing as mp
 from Globals import *
 import argparse
 
+import torch_xla.core.xla_model as xm
+import torch_xla.distributed.parallel_loader as pl
+import torch_xla.distributed.xla_multiprocessing as xmp
+
 parser = argparse.ArgumentParser(description= 'Train the Model')
 parser.add_argument('--dataset_path')
 parser.add_argument('--p', type=float)
@@ -36,23 +40,13 @@ b_sz = args.batch_size
 batch_size = args.batch_size
 d_model = 1024
 
-model_ed = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
-model_de = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
-del model_ed.xlm
-model_ed.xlm = model_de.xlm
-model_ed.p = args.p
-model_de.p = args.p
-model_ed.beam_size = args.ksample
-model_de.beam_size = args.ksample
-
+mseloss = nn.MSELoss()
+cross_entropy_loss = nn.CrossEntropyLoss()
+    
 cpus = mp.cpu_count()
 pll_train_loader = DataLoader(pll_train_ds,batch_size=b_sz, collate_fn = partial(coll, pll_dat = True), pin_memory=True, num_workers=cpus)
 mono_train_loader_en = DataLoader(mono_train_ds_en, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
 mono_train_loader_de = DataLoader(mono_train_ds_de, batch_size=b_sz, collate_fn = partial(coll, pll_dat =False), pin_memory=True, num_workers=cpus)
-optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
-optimizer_de = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
-mseloss = nn.MSELoss()
-cross_entropy_loss = nn.CrossEntropyLoss()
 
 def calculate_bleu(ref, cand, weights = (0.25, 0.25, 0.25, 0.25)):
   """
@@ -150,6 +144,13 @@ def evaluate(model, i, beam_size=3) :
     print(str(i)+"th, Forward Model: ", model[0](c))
     print(str(i)+"th, Backward Model: ", model[1](d))
 
+def save_models(i, model_ed=None, model_de=None) :
+    if (i+1)%1000==0 :
+        if model_ed is not None :
+            xm.save(model_ed.cpu().state_dict(),'weights/model_ed.param')
+        if model_de is not None :
+            xm.save(model_de.cpu().state_dict(), 'weights/model_de.param')
+
 def synchronize() :
     if torch.cuda.is_available() :
         torch.cuda.synchronize()
@@ -168,7 +169,7 @@ def run(model_forward,model_backward,batch,optimizers,pll=True):
     del probs_, sr_embd, sr_embd_, tr_embd, tr_embd_, probs
     synchronize()
     for optimizer in optimizers :
-        optimizer.step()
+        xm.optimizer_step(optimizer)
     return a,b,loss
 
 def check_thresholds(loss1,loss2,model_ed,model_de, epochs) :
@@ -186,53 +187,82 @@ def check_thresholds(loss1,loss2,model_ed,model_de, epochs) :
     
 
 losses_epochs = {"pll" : [], "mono": []}
-optimizers = [optimizer_de,optimizer_ed]
-freeze_weights(model_de.xlm)
-xlm_freezed = True
-for epoch in tqdm(range(num_epochs)) :
 
-    print(epoch)
-    model_ed.pll_dat=True
-    model_de.pll_dat=True
-    losses = [[], []]
-    for i, batch in enumerate(pll_train_loader) :
-        batch = send_to_gpu(batch, pll=True)
-        batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
-        losses[0].append(loss1.item())
-        del loss1
-        synchronize()
-        batch = flip_masks(batch)
-        _,_,loss2 = run(model_de,model_ed,batch,optimizers)
-        losses[1].append(loss2.item())
-        del loss2
-        synchronize()
-        check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de, epoch)
-        
-    losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
-    
-#Training on monolingual data if the above losses are sufficiently low:
+def train(index=0) :
+    device = xm.xla_device()
+    xm_pll_train_loader = pl.ParallelLoader(pll_train_loader, [device])
+    xm_mono_train_loader_de = pl.ParallelLoader(mono_train_loader_de, [device])
+    xm_mono_train_loader_en = pl.ParallelLoader(mono_train_loader_en, [device])
+    model_ed = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
+    model_de = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers).double().to(device)
+    del model_ed.xlm
+    model_ed.xlm = model_de.xlm
+    model_ed.p = args.p
+    model_de.p = args.p
+    model_ed.beam_size = args.ksample
+    model_de.beam_size = args.ksample
+    optimizer_ed = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
+    optimizer_de = torch.optim.Adam(model_ed.parameters(), lr = 0.01)
+    optimizers = [optimizer_de,optimizer_ed]
+    freeze_weights(model_de.xlm)
+    xlm_freezed = True
 
-    if(losses_epochs['pll'][-1][0]<thresh_for_mono_data or losses['pll'][-1][1]<thresh_for_mono_data):
-
-        print("Going for Monolingual Training")
-
-        model_ed.pll_data = False
-        model_de.pll_data = False
+    for epoch in tqdm(range(num_epochs)) :
+        print(epoch)
+        model_ed.pll_dat=True
+        model_de.pll_dat=True
         losses = [[], []]
-
-        for i, batch in enumerate(mono_train_loader_en):
-            batch = send_to_gpu(batch, pll=False)
-            _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
+        i=0
+        for batch in xm_pll_train_loader.per_device_loader(device) :
+            batch = send_to_gpu(batch, pll=True)
+            batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
             losses[0].append(loss1.item())
+            print(i, loss1)
             del loss1
             synchronize()
-
-        for i, batch in enumerate(mono_train_loader_de):
-            
-            batch = send_to_gpu(batch, pll=False)
-            _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
+            batch = flip_masks(batch)
+            _,_,loss2 = run(model_de,model_ed,batch,optimizers)
             losses[1].append(loss2.item())
+            print(i, loss2)
             del loss2
             synchronize()
+            check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de, epoch)
+            save_models(i, model_ed, model_de)
+            i+=1
+        losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
+        
+    #Training on monolingual data if the above losses are sufficiently low:
 
-        losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
+        if(losses_epochs['pll'][-1][0]<thresh_for_mono_data or losses['pll'][-1][1]<thresh_for_mono_data):
+
+            print("Going for Monolingual Training")
+
+            model_ed.pll_data = False
+            model_de.pll_data = False
+            losses = [[], []]
+            i=0
+            for batch in xm_mono_train_loader_en.per_device_loader(device):
+                batch = send_to_gpu(batch, pll=False)
+                _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
+                losses[0].append(loss1.item())
+                print("Mono ", i, loss1)
+                del loss1
+                synchronize()
+                save_models(i, model_ed, model_de)
+                i+=1
+            i=0
+            for batch in xm_mono_train_loader_de.per_device_loader(device):
+                
+                batch = send_to_gpu(batch, pll=False)
+                _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
+                losses[1].append(loss2.item())
+                print("Mono ", i, loss1)
+                del loss2
+                synchronize()
+                save_models(i, model_ed, model_de)
+                i+=1
+
+            losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
+
+if __name__ == '__main__' :
+    xmp.spawn(train, args=(), nprocs=1)
