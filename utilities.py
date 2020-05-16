@@ -7,7 +7,11 @@ class model_utils(ABC) :
     
     def __init__(self) :
         super().__init__()
-
+        
+    def set_device(self, device=None) :
+        self.device = device
+        #print(device)
+    
     def cut_and_paste_down( batch, dim=1) :
         return batch.transpose(0,1).reshape(-1)
 
@@ -34,10 +38,10 @@ class model_utils(ABC) :
         upp_indices = np.triu_indices(tr_len, k=1)
         x[upp_indices] = -np.inf
         if it_no is not None :
-            e = torch.tensor(x, dtype = torch.float32, device=device)
+            e = torch.tensor(x, dtype = torch.float32, device=self.device)
             e[e!=e[it_no]] = -np.inf
             return e
-        return torch.tensor(x, dtype=torch.float32, device=device)
+        return torch.tensor(x, dtype=torch.float32, device=self.device)
 
     
     def final_layer(self, trfrmr_out, mask) :
@@ -48,7 +52,7 @@ class model_utils(ABC) :
             return self.final_linear(x)
     
     def mask_fr_mask(self) :
-        m = torch.zeros((self.bs,self.max_tr_seq_len),dtype=torch.bool, device=device)
+        m = torch.zeros((self.bs,self.max_tr_seq_len),dtype=torch.bool, device=self.device)
         m[:,self.it_no+1]=1
         m[~self.not_done_samples] = 0
         return m
@@ -56,7 +60,7 @@ class model_utils(ABC) :
     def apply_final_layer(self, trfrmr_out, mask) :
         if self.it_no is not None :
             mask_ = self.tgt_key_pad_mask[self.not_done_samples][:,self.it_no].bool()
-            mask = torch.zeros((self.bs,self.max_tr_seq_len), dtype=torch.bool, device=device)
+            mask = torch.zeros((self.bs,self.max_tr_seq_len), dtype=torch.bool, device=self.device)
             mask[self.mask_fr_mask()] = mask_
         return self.final_layer(trfrmr_out, mask)
 
@@ -101,7 +105,7 @@ class model_utils(ABC) :
     
     def embed_for_decoder(self, output_at_it_no, lang_id) :
         y = self.xlm.embeddings(output_at_it_no)   #batch_sizeXd_model
-        z = y + self.xlm.position_embeddings(torch.tensor(self.it_no).long())
+        z = y + self.xlm.position_embeddings(self.it_no)
         return (z+self.xlm.lang_embeddings(lang_id))
 
     def indi(self) :
@@ -111,13 +115,13 @@ class model_utils(ABC) :
         return quotients,rems
     
     def get_msk_fr_prev_probs_entry(self) :
-        x = torch.zeros((self.actual_bs, self.max_tr_seq_len+1, self.beam_size), dtype=torch.bool, device=device)
+        x = torch.zeros((self.actual_bs, self.max_tr_seq_len+1, self.beam_size), dtype=torch.bool, device=self.device)
         x[:,self.it_no,:] = self.not_done_samples.reshape(-1,self.beam_size)
         return x
 
     def reform(self, trfrmr_out) :
-        prev_probs_here = self.prev_probs[:,self.it_no-1,:] if self.it_no!=0 else torch.zeros((self.actual_bs, self.beam_size),device=device)
-        m = (trfrmr_out.t()+prev_probs_here.reshape(-1)).t()
+        prev_probs_here = self.prev_probs[:,self.it_no-1,:] if self.it_no!=0 else torch.zeros((self.actual_bs, self.beam_size),device=self.device)
+        m = (trfrmr_out.t()+self.prev_probs_here.reshape(-1)).t()
         m[~self.not_done_samples] = 0
         m = m.reshape(-1,self.beam_size*self.vocab_size)
         msk_fr_prev_probs_entry = self.get_msk_fr_prev_probs_entry()
@@ -135,7 +139,7 @@ class model_utils(ABC) :
         return dic
 
     def calc_just_now_completed_samples_mask(self,ind) :
-        self.just_now_completed_samples_mask[:] = False
+        self.just_now_completed_samples_mask[:,:] = False
         self.just_now_completed_samples_mask[self.not_done_samples==True] = ~ind
         self.not_done_samples[self.not_done_samples==True] = ind
 

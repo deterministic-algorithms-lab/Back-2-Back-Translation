@@ -1,7 +1,7 @@
 import torch
 from preprocessing import tokenizer
 import torch_xla.core.xla_model as xm
-device = xm.xla_device() #torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 num_epochs = 1000
 thresh_for_mono_data = 0.5
 thresh_for_xlm_weight_freeze = 0.7 
