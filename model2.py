@@ -12,7 +12,7 @@ dic = tokenizer.decoder
 class xlmb2b(nn.Module, model_utils):
     def __init__(self, dic = dic, d_model=1024, trfrmr_nlayers=4, pll_dat=True, device=None) :
         super().__init__()
-        self.xlm = XLMModel.from_pretrained('xlm-mlm-ende-1024')
+        self.xlm = XLMModel.from_pretrained('xlm-mlm-ende-1024').train()
         self.d_model = d_model
         decoder_layer = torch.nn.TransformerDecoderLayer(self.d_model, nhead=8)
         self.trnsfrmr_dcodr = torch.nn.TransformerDecoder(decoder_layer, num_layers=trfrmr_nlayers)

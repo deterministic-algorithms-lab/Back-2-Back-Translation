@@ -188,6 +188,8 @@ def check_thresholds(loss1,loss2,model_ed,model_de, epochs) :
 losses_epochs = {"pll" : [], "mono": []}
 
 def train(index) :
+
+    torch.manual_seed(1234)
     device = xm.xla_device()
     pll_dis_sampler = DistributedSampler(pll_train_ds, num_replicas=world_size, rank=index)
     mono_dis_sampler_en = DistributedSampler(mono_train_ds_en, num_replicas=world_size, rank=index)
@@ -199,7 +201,15 @@ def train(index) :
     xm_pll_train_loader = pl.ParallelLoader(pll_train_loader, [device])
     xm_mono_train_loader_de = pl.ParallelLoader(mono_train_loader_de, [device])
     xm_mono_train_loader_en = pl.ParallelLoader(mono_train_loader_en, [device])
+    
+    if not xm.is_master_ordinal() :
+        xm.rendezvous('download_only_once')
+
     model_ed = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers, device=device).double().to(device)
+    
+    if xm.is_master_ordinal() :
+        xm.rendezvous('download_only_once')
+    
     model_de = xlmb2b(trfrmr_nlayers=args.trfrmr_nlayers, device=device).double().to(device)
     del model_ed.xlm
     model_ed.xlm = model_de.xlm
@@ -223,13 +233,13 @@ def train(index) :
             batch = send_to_gpu(batch, pll=True, device=device)
             batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
             losses[0].append(loss1.item())
-            xm.master_print(i, loss1)
+            xm.master_print( str(i) + ' ' +str(loss1.item()) )
             del loss1
             synchronize()
             batch = flip_masks(batch)
             _,_,loss2 = run(model_de,model_ed,batch,optimizers)
             losses[1].append(loss2.item())
-            xm.master_print(i, loss2)
+            xm.master_print( str(i)+' '+ str(loss2.item()) )
             del loss2
             synchronize()
             check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de, epoch)
@@ -251,7 +261,7 @@ def train(index) :
                 batch = send_to_gpu(batch, pll=False, device=device)
                 _,_,loss1 = run(model_ed,model_de,batch,optimizers,pll=False)
                 losses[0].append(loss1.item())
-                xm.master_print("Mono ", i, loss1)
+                xm.master_print("Mono "+ str(i)+' ' str(loss1.item()))
                 del loss1
                 synchronize()
                 save_models(i, model_ed, model_de)
@@ -262,7 +272,7 @@ def train(index) :
                 batch = send_to_gpu(batch, pll=False, device=device)
                 _,_,loss2 = run(model_de,model_ed,batch,optimizers,pll=False)
                 losses[1].append(loss2.item())
-                xm.master_print("Mono ", i, loss1)
+                xm.master_print("Mono "+ str(i)+ str(loss1.item()))
                 del loss2
                 synchronize()
                 save_models(i, model_ed, model_de)
@@ -271,4 +281,4 @@ def train(index) :
             losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
 
 if __name__ == '__main__' :
-    xmp.spawn(train, args=(), nprocs=8)
+    xmp.spawn(train, args=(), nprocs=8, start_method='fork')
