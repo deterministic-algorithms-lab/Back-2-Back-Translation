@@ -243,4 +243,4 @@ for epoch in tqdm(range(num_epochs)) :
             del loss2
             synchronize()
 
-        losses_epochs['mono'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
+        losses_epochs['mono'].append([sum(losses[0])/len(losses[0]), sum(losses[1])/len(losses[1])])
