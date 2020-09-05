@@ -184,6 +184,9 @@ def check_thresholds(loss1,loss2,model_ed,model_de, epochs) :
         model_de.begin_prgrsiv_xlm_to_plt = False
         model_ed.begin_prgrsiv_xlm_to_plt = False
     
+def save_checkpoint(model_ed, model_de) :
+    torch.save(model_ed.state_dict(), '../b2b_wts/model_ed.pt')
+    torch.save(model_de.state_dict(), '../b2b_wts/model_de.pt')
 
 losses_epochs = {"pll" : [], "mono": []}
 optimizers = [optimizer_de,optimizer_ed]
@@ -199,15 +202,20 @@ for epoch in tqdm(range(num_epochs)) :
         batch = send_to_gpu(batch, pll=True)
         batch['Y']['input_ids'], batch['X']['input_ids'], loss1 = run(model_ed,model_de,batch,optimizers)
         losses[0].append(loss1.item())
+        if i>=2000 and i%2000==0 :
+            print(i, sum(losses[1][i-2000:i])/2000)
         del loss1
         synchronize()
         batch = flip_masks(batch)
         _,_,loss2 = run(model_de,model_ed,batch,optimizers)
         losses[1].append(loss2.item())
+        if i>=2000 and i%2000==0 :
+            print(i, sum(losses[1][i-2000:i])/2000)
         del loss2
         synchronize()
         check_thresholds(losses[0][-1],losses[1][-1], model_ed, model_de, epoch)
-        
+        if i%30000 == 0 and i>0 :
+            save_checkpoint(model_ed, model_de)
     losses_epochs['pll'].append([losses[0].sum()/len(losses[0]), losses[1].sum()/len(losses[1])])
     
 #Training on monolingual data if the above losses are sufficiently low:
